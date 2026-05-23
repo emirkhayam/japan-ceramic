@@ -409,7 +409,7 @@
       <b>JAPAN</b><span>CERAMIC</span>
     </a>
     <nav class="main">
-      <a href="#collections">Коллекции</a>
+      <a href="#collections">Каталог</a>
       <a href="#atmospheres">Атмосферы</a>
       <a href="#ai">AI-визуализация</a>
       <a href="#brand">О бренде</a>
@@ -427,7 +427,7 @@
 <!-- mobile drawer -->
 <div class="drawer" id="drawer">
   <button class="dr-close" id="drClose">&times;</button>
-  <a href="#collections">Коллекции</a>
+  <a href="#collections">Каталог</a>
   <a href="#atmospheres">Атмосферы</a>
   <a href="#ai">AI-визуализация</a>
   <a href="#brand">О бренде</a>
@@ -479,9 +479,9 @@
   <div class="wrap">
     <div class="sec-top sec-head">
       <div>
-        <div class="eyebrow reveal">Коллекции</div>
-        <h2 class="reveal" data-d="1">Вдохновение<br>в каждой текстуре</h2>
-        <p class="reveal" data-d="2">Уникальные коллекции керамогранита, созданные природой и технологиями.</p>
+        <div class="eyebrow reveal">Каталог</div>
+        <h2 class="reveal" data-d="1">Вдохновение в каждой категории</h2>
+        <p class="reveal" data-d="2">Три направления. Тысячи решений.<br>Выберите материал, который подчеркнёт идею вашего пространства.</p>
       </div>
       <div class="arrows reveal" data-d="2">
         <button data-rail="colRail" data-dir="-1" aria-label="Назад">
@@ -748,6 +748,7 @@
 </footer>
 
 <script>
+(function() {
 /* ========== header scroll state ========== */
 const header=document.getElementById('header');
 addEventListener('scroll',()=>header.classList.toggle('scrolled',scrollY>40));
@@ -822,6 +823,7 @@ document.getElementById('newsBtn').addEventListener('click',()=>{
   if(/^[^@]+@[^@]+\.[^@]+$/.test(i.value)){i.value='';i.placeholder='Спасибо за подписку!'}
   else{i.placeholder='Введите корректный e-mail'}
 });
+})();
 </script>
 </body>
 </html>

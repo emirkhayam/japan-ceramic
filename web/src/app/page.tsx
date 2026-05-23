@@ -10,11 +10,9 @@ export default async function LandingPage() {
   // Extract only <style>...</style> and body content (between <body> and </body>)
   const styleMatch = raw.match(/<style>([\s\S]*?)<\/style>/);
   const bodyMatch = raw.match(/<body>([\s\S]*?)<\/body>/);
-  const scriptMatch = raw.match(/<script>([\s\S]*?)<\/script>/);
 
   let bodyContent = bodyMatch?.[1] || "";
   const styles = styleMatch?.[1] || "";
-  const script = scriptMatch?.[1] || "";
 
   // Fix video path
   bodyContent = bodyContent.replace(
@@ -22,16 +20,16 @@ export default async function LandingPage() {
     'src="/hero-video.mp4"'
   );
 
-  // Update navigation: replace useless "Шоурум" with "Каталог" link, add auth links
-  // Desktop nav
+  // Navigation is already updated in the HTML file - no need to replace
+
+  // Update AI visualization links to go to /visualize page
   bodyContent = bodyContent.replace(
-    `<a href="#brand">Шоурум</a>\n      <a href="#footer">Контакты</a>`,
-    `<a href="/catalog">Каталог</a>\n      <a href="#footer">Контакты</a>`
+    /<a href="#ai">/g,
+    '<a href="/visualize">'
   );
-  // Mobile drawer
   bodyContent = bodyContent.replace(
-    `<a href="#brand">Шоурум</a>\n  <a href="#footer">Контакты</a>`,
-    `<a href="/catalog">Каталог</a>\n  <a href="#footer">Контакты</a>`
+    '<a href="#" class="btn btn-light reveal" data-d="3">Попробовать AI-визуализацию',
+    '<a href="/visualize" class="btn btn-light reveal" data-d="3">Попробовать AI-визуализацию'
   );
 
   // Update "Каталог" button in header to link to /catalog
@@ -60,7 +58,6 @@ export default async function LandingPage() {
     <>
       <style dangerouslySetInnerHTML={{ __html: styles }} />
       <div dangerouslySetInnerHTML={{ __html: bodyContent }} suppressHydrationWarning />
-      <script dangerouslySetInnerHTML={{ __html: script }} />
     </>
   );
 }

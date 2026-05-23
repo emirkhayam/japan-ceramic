@@ -23,6 +23,10 @@ export default async function Header() {
             Каталог
             <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />
           </Link>
+          <Link href="/visualize" className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
+            AI-Визуализация
+            <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />
+          </Link>
           {user && (
             <Link href="/cabinet" className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
               Кабинет
