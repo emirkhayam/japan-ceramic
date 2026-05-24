@@ -37,7 +37,7 @@ export default function MobileMenu({
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[1500] bg-[#0a0d12] flex flex-col p-8">
+        <div className="fixed top-0 left-0 w-screen h-screen z-[1500] bg-[#0a0d12] overflow-y-auto flex flex-col p-8">
           <div className="flex justify-between items-center mb-6">
             <span className="font-light text-lg tracking-[.26em]">
               JAPAN <span className="text-[var(--ink-mute)]">CERAMIC</span>
