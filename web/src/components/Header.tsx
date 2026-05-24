@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
+import MobileMenu from "./MobileMenu";
 
 export default async function Header() {
   const user = await getSession();
@@ -42,7 +43,7 @@ export default async function Header() {
           )}
         </nav>
 
-        <div className="flex items-center gap-3.5">
+        <div className="hidden md:flex items-center gap-3.5">
           {user ? (
             <>
               <Link href="/cabinet" className="text-[13px] text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors">
@@ -58,6 +59,12 @@ export default async function Header() {
             </Link>
           )}
         </div>
+
+        <MobileMenu
+          isAuthed={!!user}
+          userName={user?.fullName ?? null}
+          isAdmin={user?.role === "admin"}
+        />
       </div>
     </header>
   );
