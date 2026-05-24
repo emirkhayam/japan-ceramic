@@ -1,11 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [errors, setErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -28,8 +26,8 @@ export default function RegisterPage() {
     });
 
     if (res.ok) {
-      router.push("/cabinet");
-      router.refresh();
+      window.location.href = "/cabinet";
+      return;
     } else {
       const data = await res.json();
       setErrors(data.errors || [data.error || "Ошибка регистрации"]);

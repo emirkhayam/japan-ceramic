@@ -5,23 +5,22 @@ import { prisma } from "@/lib/db";
 export default async function AdminDashboard() {
   await requireAdmin();
 
-  const [productCount, categoryCount, userCount, projectCount] = await Promise.all([
+  const [productCount, categoryCount, userCount, newLeadCount] = await Promise.all([
     prisma.product.count(),
     prisma.category.count(),
     prisma.user.count({ where: { role: "designer" } }),
-    prisma.designerProject.count(),
+    prisma.contactLead.count({ where: { isRead: false } }),
   ]);
 
   const stats = [
     { label: "Товаров", value: productCount, href: "/admin/products" },
     { label: "Категорий", value: categoryCount, href: "/admin/categories" },
     { label: "Дизайнеров", value: userCount, href: "/admin/users" },
-    { label: "Проектов", value: projectCount, href: "#" },
+    { label: "Новых заявок", value: newLeadCount, href: "/admin/leads" },
   ];
 
   return (
-    <section className="py-20">
-      <div className="max-w-[1320px] mx-auto px-10">
+    <div className="pb-12">
         <div className="mb-12">
           <div className="flex items-center gap-3.5 text-[11px] font-semibold tracking-[.34em] uppercase text-[var(--ink-mute)] mb-5">
             <span className="w-[34px] h-px bg-[var(--line-2)]" />
@@ -82,8 +81,17 @@ export default async function AdminDashboard() {
             </div>
             <span className="text-[var(--ink-faint)] group-hover:translate-x-1 group-hover:text-[var(--ink)] transition-all">→</span>
           </Link>
+          <Link
+            href="/admin/leads"
+            className="group flex justify-between items-center px-6 py-5 border border-[var(--line)] rounded-sm hover:bg-[rgba(255,255,255,.03)] hover:border-[var(--line-2)] transition-all"
+          >
+            <div>
+              <h3 className="text-lg font-light mb-1">Заявки</h3>
+              <p className="text-[13px] text-[var(--ink-mute)]">Обращения клиентов с сайта</p>
+            </div>
+            <span className="text-[var(--ink-faint)] group-hover:translate-x-1 group-hover:text-[var(--ink)] transition-all">→</span>
+          </Link>
         </div>
-      </div>
-    </section>
+    </div>
   );
 }

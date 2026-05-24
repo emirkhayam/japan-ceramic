@@ -179,18 +179,20 @@ async function viaGemini(input: VisualizeInput): Promise<string> {
     const surfaceWord = input.surface === 'floor' ? 'floor' : 'one main wall';
     const prompt = `You are a photorealistic interior visualization engine. IMAGE 1 is a photo of a real room. IMAGE 2 is a seamless ceramic tile texture/swatch called "${input.tileName}".
 
-Task: re-render IMAGE 1 with the ${surfaceWord} surfaced in EXACTLY the tile from IMAGE 2.
+Task: completely re-surface the ${surfaceWord} in IMAGE 1 with the tile shown in IMAGE 2, fully replacing the existing covering.
 
 Hard rules:
-- Reproduce the tile's real pattern, color, veining and grout from IMAGE 2 as faithfully as possible — do NOT invent a different tile.
-- Lay the tiles in correct perspective for the ${surfaceWord}, with realistic seams between tiles that follow the floor/wall vanishing lines.
+- IMAGE 2 is ONE tile. Treat it as a repeating tile and lay many identical copies edge-to-edge in a regular grid across the ${surfaceWord}.
+- Reproduce IMAGE 2 EXACTLY — its pattern, geometry, scale, color, veining and grout. If it is a fine geometric or decorative pattern, copy that exact pattern faithfully; if it is stone, marble or wood, copy that exact look. NEVER substitute a different or generic tile.
+- Fully remove the ORIGINAL ${surfaceWord} material — do not keep, blend with, or echo the existing floor/wall pattern.
+- Lay the tiles in correct perspective for the ${surfaceWord}, with realistic seams between tiles that follow the vanishing lines.
 - Preserve the original photo's lighting, shadows and reflections so the new surface sits naturally.
 - Keep EVERYTHING else identical: walls, ceiling, furniture, windows, decor, camera framing — change only the ${surfaceWord}.
 Output only the final edited photo, nothing else.`;
 
     console.log('[viaGemini] Calling Gemini API...');
     const response: any = await client.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-3-pro-image-preview',
       contents: [
         {
           role: 'user',

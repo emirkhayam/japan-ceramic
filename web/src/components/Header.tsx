@@ -15,18 +15,19 @@ export default async function Header() {
         </Link>
 
         <nav className="hidden md:flex gap-[38px]">
-          <Link href="/" className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
-            Главная
-            <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />
-          </Link>
-          <Link href="/catalog" className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
-            Каталог
-            <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />
-          </Link>
-          <Link href="/visualize" className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
-            AI-Визуализация
-            <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />
-          </Link>
+          {[
+            { label: "Каталог", href: "/catalog" },
+            { label: "Коллекции", href: "/#atmospheres" },
+            { label: "AI-визуализация", href: "/visualize" },
+            { label: "О компании", href: "/#brand" },
+            { label: "Шоурум", href: "/#brand" },
+            { label: "Контакты", href: "/#contacts" },
+          ].map((item) => (
+            <Link key={item.label} href={item.href} className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
+              {item.label}
+              <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />
+            </Link>
+          ))}
           {user && (
             <Link href="/cabinet" className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
               Кабинет
@@ -47,9 +48,9 @@ export default async function Header() {
               <Link href="/cabinet" className="text-[13px] text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors">
                 {user.fullName}
               </Link>
-              <Link href="/api/auth/logout" className="text-[13px] text-[var(--ink-faint)] hover:text-[var(--ink-soft)] transition-colors">
+              <a href="/api/auth/logout" className="text-[13px] text-[var(--ink-faint)] hover:text-[var(--ink-soft)] transition-colors">
                 Выйти
-              </Link>
+              </a>
             </>
           ) : (
             <Link href="/auth/login" className="text-[13px] text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors">

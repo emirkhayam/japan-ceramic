@@ -5,9 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { PhotoUploader } from '@/components/PhotoUploader';
 import { TileSelector } from '@/components/TileSelector';
 import { VisualizerLoader } from '@/components/VisualizerLoader';
-import { ProviderSelector } from '@/components/ProviderSelector';
 import { tiles, getTileById, formatPrice, type Tile } from '@/lib/tiles';
-import { Sparkles, Download, MessageCircle, ArrowLeft, AlertCircle, RotateCcw } from 'lucide-react';
+import { Sparkles, Download, MessageCircle, ArrowLeft, AlertCircle, RotateCcw, Camera, Check } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 type Surface = 'floor' | 'wall';
@@ -22,7 +21,7 @@ function VisualizePageInner() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [selectedTile, setSelectedTile] = useState<Tile | null>(initialTile ?? null);
   const [surface, setSurface] = useState<Surface>('floor');
-  const [provider, setProvider] = useState<Provider>('gemini');
+  const [provider] = useState<Provider>('gemini');
   const [stage, setStage] = useState<Stage>('idle');
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultMeta, setResultMeta] = useState<{ provider: Provider; durationMs: number } | null>(null);
@@ -231,6 +230,27 @@ function VisualizePageInner() {
             <PhotoUploader value={photo} onChange={setPhoto} />
           </section>
 
+          <section className="card p-5">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-gold-400">
+              <Camera size={16} /> Как сфотографировать
+            </h2>
+            <ul className="space-y-2.5 text-sm text-mist-300">
+              {[
+                'Снимайте при дневном свете, без вспышки',
+                'Держите камеру ровно, лицом к стене или полу',
+                'Захватите поверхность целиком, без сильного наклона',
+                'Уберите лишние предметы с пола или стены',
+                'Следите за резкостью — без размытия и пересветов',
+                'Чем выше разрешение, тем точнее результат',
+              ].map((tip) => (
+                <li key={tip} className="flex items-start gap-2.5">
+                  <Check size={16} className="mt-0.5 shrink-0 text-gold-400" />
+                  <span>{tip}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
           {photo && (
             <section className="animate-slide-up">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
@@ -255,11 +275,6 @@ function VisualizePageInner() {
             </section>
           )}
 
-          {photo && (
-            <section className="animate-slide-up">
-              <ProviderSelector value={provider} onChange={setProvider} />
-            </section>
-          )}
         </div>
 
         <div className="space-y-4">
@@ -277,7 +292,7 @@ function VisualizePageInner() {
         <button
           onClick={handleGenerate}
           disabled={!canGenerate}
-          className="btn-gold w-full max-w-md !px-6 !py-4 text-base shadow-2xl shadow-gold-500/20 disabled:!bg-mist-400/20 disabled:!text-mist-400 sm:w-auto"
+          className="btn-gold w-full max-w-md !px-6 !py-4 text-base disabled:!bg-[rgba(255,255,255,.06)] disabled:!text-[var(--ink-soft)] disabled:!shadow-none disabled:cursor-not-allowed disabled:hover:!transform-none sm:w-auto"
         >
           <Sparkles size={18} />
           {!photo

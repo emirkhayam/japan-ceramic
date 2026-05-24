@@ -120,3 +120,16 @@ model Favorite {
   @@unique([userId, productId])
   @@map("favorites")
 }
+
+model ContactLead {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String
+  email     String?
+  message   String?
+  source    String   @default("contacts")
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("contact_leads")
+}

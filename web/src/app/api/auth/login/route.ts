@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   }
 
   const token = createToken(user.id, user.role);
-  const response = NextResponse.json({ success: true });
+  const response = NextResponse.json({ success: true, role: user.role });
   response.headers.set("Set-Cookie", setAuthCookie(token)["Set-Cookie"]);
   return response;
 }

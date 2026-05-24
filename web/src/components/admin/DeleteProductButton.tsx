@@ -12,8 +12,8 @@ export default function DeleteProductButton({ productId, productName }: { produc
   }
 
   return (
-    <button onClick={handleDelete} className="text-[12px] text-red-400/60 hover:text-red-400 transition-colors">
-      Удл.
+    <button onClick={handleDelete} className="text-[12px] px-3 py-1.5 border border-[rgba(220,80,80,.35)] rounded-sm text-[#e88] hover:bg-red-500 hover:text-white hover:border-red-500 transition-all">
+      Удалить
     </button>
   );
 }

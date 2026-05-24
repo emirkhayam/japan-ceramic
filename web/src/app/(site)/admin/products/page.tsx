@@ -12,8 +12,7 @@ export default async function AdminProductsPage() {
   });
 
   return (
-    <section className="py-20">
-      <div className="max-w-[1320px] mx-auto px-10">
+    <div className="pb-12">
         <div className="flex justify-between items-center mb-10">
           <div>
             <Link href="/admin" className="text-[13px] text-[var(--ink-mute)] hover:text-[var(--ink)] transition-colors mb-3 inline-block">
@@ -66,7 +65,7 @@ export default async function AdminProductsPage() {
                   </td>
                   <td className="py-3">
                     <div className="flex gap-2">
-                      <Link href={`/admin/products/${product.id}`} className="text-[12px] text-[var(--ink-mute)] hover:text-[var(--ink)] transition-colors">
+                      <Link href={`/admin/products/${product.id}`} className="text-[12px] px-3 py-1.5 border border-[var(--line-2)] rounded-sm text-[var(--ink-soft)] hover:bg-[var(--ink)] hover:text-[#0a0d12] hover:border-[var(--ink)] transition-all">
                         Ред.
                       </Link>
                       <DeleteProductButton productId={product.id} productName={product.name} />
@@ -77,7 +76,6 @@ export default async function AdminProductsPage() {
             </tbody>
           </table>
         </div>
-      </div>
-    </section>
+    </div>
   );
 }

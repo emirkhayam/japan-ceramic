@@ -51,8 +51,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <section className="py-20">
-      <div className="max-w-[1320px] mx-auto px-10">
+    <div className="pb-12">
         <Link href="/admin" className="text-[13px] text-[var(--ink-mute)] hover:text-[var(--ink)] transition-colors mb-3 inline-block">
           ← Админ-панель
         </Link>
@@ -116,7 +115,6 @@ export default function AdminUsersPage() {
             </table>
           </div>
         )}
-      </div>
-    </section>
+    </div>
   );
 }

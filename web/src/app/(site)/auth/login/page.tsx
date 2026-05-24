@@ -1,11 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -25,8 +23,11 @@ export default function LoginPage() {
     });
 
     if (res.ok) {
-      router.push("/cabinet");
-      router.refresh();
+      const data = await res.json();
+      const from = new URLSearchParams(window.location.search).get("from");
+      const dest = from || (data.role === "admin" ? "/admin" : "/cabinet");
+      window.location.href = dest;
+      return;
     } else {
       const data = await res.json();
       setError(data.error || "Ошибка входа");

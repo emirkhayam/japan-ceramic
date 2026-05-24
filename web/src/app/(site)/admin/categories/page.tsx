@@ -65,8 +65,7 @@ export default function AdminCategoriesPage() {
     "w-full px-4 py-3 bg-[rgba(255,255,255,.04)] border border-[var(--line-2)] rounded-sm text-[var(--ink)] text-sm outline-none focus:border-[rgba(255,255,255,.34)] focus:bg-[rgba(255,255,255,.07)] transition-all placeholder:text-[var(--ink-faint)]";
 
   return (
-    <section className="py-20">
-      <div className="max-w-[1320px] mx-auto px-10">
+    <div className="pb-12">
         <div className="flex justify-between items-center mb-10">
           <div>
             <Link href="/admin" className="text-[13px] text-[var(--ink-mute)] hover:text-[var(--ink)] transition-colors mb-3 inline-block">
@@ -151,7 +150,6 @@ export default function AdminCategoriesPage() {
             </tbody>
           </table>
         )}
-      </div>
-    </section>
+    </div>
   );
 }

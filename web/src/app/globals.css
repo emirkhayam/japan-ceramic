@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* ===== Tailwind v4 theme — цвета, которые использует приложение ===== */
+@theme {
+  --color-gold-400: #d8b26a;
+  --color-gold-500: #c69a4e;
+  --color-gold-600: #b0863c;
+  --color-ink-700: #11161f;
+  --color-ink-800: #0c1018;
+  --color-ink-900: #080a0f;
+  --color-mist-100: #f4f5f7;
+  --color-mist-200: #d7dbe2;
+  --color-mist-300: #b9bfc9;
+  --color-mist-400: #6f7782;
+}
+
 :root {
   --bg: #080a0f;
   --bg-2: #0c1018;
@@ -41,11 +55,71 @@ body::after {
 }
 
 ::selection { background: rgba(200,210,224,.22); }
-a { color: inherit; text-decoration: none; }
 img { display: block; max-width: 100%; }
+
+/* base layer: ниже утилит Tailwind, чтобы text-* перебивал inherit на ссылках-кнопках */
+@layer base {
+  a { color: inherit; text-decoration: none; }
+}
 
 h1, h2, h3 {
   font-weight: 200;
   letter-spacing: -.015em;
   line-height: 1.12;
+}
+
+/* ===== Component classes used across the app ===== */
+@layer components {
+  .btn-gold {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    background: var(--color-gold-500);
+    color: #0a0d12;
+    font-weight: 600;
+    padding: .8rem 1.6rem;
+    border-radius: 3px;
+    transition: background .3s var(--ease), transform .2s var(--ease), box-shadow .3s var(--ease);
+  }
+  .btn-gold:hover:not(:disabled) {
+    background: var(--color-gold-400);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 30px -10px rgba(214,178,106,.5);
+  }
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    border: 1px solid var(--line-2);
+    color: var(--ink);
+    background: rgba(255,255,255,.02);
+    padding: .8rem 1.6rem;
+    border-radius: 3px;
+    transition: .3s var(--ease);
+  }
+  .btn-ghost:hover {
+    background: rgba(255,255,255,.08);
+    border-color: rgba(255,255,255,.4);
+    transform: translateY(-1px);
+  }
+  .card {
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .label-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--color-gold-400);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    padding: .4rem .9rem;
+  }
 }

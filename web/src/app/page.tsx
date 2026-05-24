@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 
 export default async function LandingPage() {
   const user = await getSession();
-  const htmlPath = path.join(process.cwd(), "..", "japan-ceramic.html");
+  const htmlPath = path.join(process.cwd(), "japan-ceramic.html");
   const raw = fs.readFileSync(htmlPath, "utf-8");
 
   // Extract only <style>...</style> and body content (between <body> and </body>)
@@ -44,8 +44,8 @@ export default async function LandingPage() {
     : `<a href="/auth/login" class="catalog-btn" style="margin-right:4px"><span>Войти</span></a>`;
 
   bodyContent = bodyContent.replace(
-    `<button class="grid-btn"`,
-    `${authLink}\n      <button class="grid-btn"`
+    `<button class="burger"`,
+    `${authLink}\n      <button class="burger"`
   );
 
   // Update hero CTA buttons

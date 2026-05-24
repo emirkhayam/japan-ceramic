@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getTileById } from '@/lib/tiles';
 import { visualize, type Provider } from '@/lib/ai';
 import { lookupCache } from '@/lib/demo-cache';
+import { getSession } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -14,6 +15,14 @@ type Body = {
 };
 
 export async function POST(req: Request) {
+  const user = await getSession();
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Войдите в аккаунт, чтобы пользоваться визуализатором' },
+      { status: 401 },
+    );
+  }
+
   let body: Body;
   try {
     body = await req.json();
