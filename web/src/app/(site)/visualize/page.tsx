@@ -182,12 +182,12 @@ function VisualizePageInner() {
                 Заберите образец этой плитки в шоуруме — почувствуете текстуру руками.
               </p>
               <a
-                href="https://2gis.kg/bishkek/firm/70000001028478923"
+                href="https://2gis.kg/bishkek/firm/70000001100637803"
                 target="_blank"
                 rel="noopener"
                 className="mt-3 inline-block text-sm text-gold-400 hover:underline"
               >
-                Карасаева 64, Бишкек →
+                Юнусалиева 28, Бишкек →
               </a>
             </div>
           </aside>
