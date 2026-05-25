@@ -8,12 +8,13 @@ export default async function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-[1000] bg-[rgba(8,10,15,.82)] backdrop-blur-[18px] border-b border-[var(--line)]">
       <div className="flex items-center justify-between max-w-[1320px] mx-auto px-10 py-4">
-        <Link href="/" className="flex flex-col leading-[.92]">
+        {/* Полный переход (<a>), не SPA: лендинг рендерится из статического HTML с инлайн-скриптом (reveal-анимации), который при мягкой навигации не выполняется и страница остаётся пустой */}
+        <a href="/" className="flex flex-col leading-[.92]">
           <b className="font-light text-xl tracking-[.26em]">JAPAN</b>
           <span className="font-semibold text-[8.5px] tracking-[.46em] text-[var(--ink-mute)] pl-[2px]">
             CERAMIC
           </span>
-        </Link>
+        </a>
 
         <nav className="hidden md:flex gap-[38px]">
           {[
@@ -23,12 +24,22 @@ export default async function Header() {
             { label: "О компании", href: "/#brand" },
             { label: "Шоурум", href: "/#brand" },
             { label: "Контакты", href: "/#contacts" },
-          ].map((item) => (
-            <Link key={item.label} href={item.href} className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
-              {item.label}
-              <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />
-            </Link>
-          ))}
+          ].map((item) => {
+            const cls = "text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5";
+            const underline = <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />;
+            // Якоря лендинга (/#...) — полный переход, иначе reveal-анимации не запускаются и блоки остаются невидимыми
+            return item.href.startsWith("/#") ? (
+              <a key={item.label} href={item.href} className={cls}>
+                {item.label}
+                {underline}
+              </a>
+            ) : (
+              <Link key={item.label} href={item.href} className={cls}>
+                {item.label}
+                {underline}
+              </Link>
+            );
+          })}
           {user && (
             <Link href="/cabinet" className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
               Кабинет

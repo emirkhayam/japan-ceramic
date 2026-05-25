@@ -52,16 +52,19 @@ export default function MobileMenu({
           </div>
 
           <nav className="flex flex-col">
-            {navItems.map((it) => (
-              <Link
-                key={it.label}
-                href={it.href}
-                onClick={close}
-                className="text-2xl font-extralight py-3.5 border-b border-[var(--line)] text-[var(--ink)]"
-              >
-                {it.label}
-              </Link>
-            ))}
+            {navItems.map((it) => {
+              const cls = "text-2xl font-extralight py-3.5 border-b border-[var(--line)] text-[var(--ink)]";
+              // Якоря лендинга (/#...) — полный переход, иначе reveal-скрипт лендинга не выполняется и блоки остаются невидимыми
+              return it.href.startsWith("/#") ? (
+                <a key={it.label} href={it.href} onClick={close} className={cls}>
+                  {it.label}
+                </a>
+              ) : (
+                <Link key={it.label} href={it.href} onClick={close} className={cls}>
+                  {it.label}
+                </Link>
+              );
+            })}
           </nav>
 
           <div className="mt-auto flex flex-col gap-3 pt-8">
