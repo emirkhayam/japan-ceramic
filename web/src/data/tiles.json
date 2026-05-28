@@ -1,0 +1,72 @@
+[
+  {
+    "id": "hellas-3p",
+    "sku": "HELLAS-3P",
+    "name": "Hellas 3P",
+    "brand": "Japan Ceramic",
+    "collection": "Hellas",
+    "type": "clinker",
+    "size": "40×40",
+    "pricePerM2": 3200,
+    "currency": "KGS",
+    "color": "beige",
+    "texture": "clinker",
+    "image": "/tiles-custom/hellas3p_400x400-1.jpg"
+  },
+  {
+    "id": "denver-4",
+    "sku": "DENVER-4",
+    "name": "Denver 4",
+    "brand": "Japan Ceramic",
+    "collection": "Denver",
+    "type": "clinker",
+    "size": "40×40",
+    "pricePerM2": 3100,
+    "currency": "KGS",
+    "color": "grey",
+    "texture": "clinker",
+    "image": "/tiles-custom/denver_4_1_400x400.jpg"
+  },
+  {
+    "id": "hellas-3p-type1",
+    "sku": "HELLAS-3P-T1",
+    "name": "Hellas 3P Type 1",
+    "brand": "Japan Ceramic",
+    "collection": "Hellas",
+    "type": "clinker",
+    "size": "40×40",
+    "pricePerM2": 3250,
+    "currency": "KGS",
+    "color": "beige",
+    "texture": "clinker",
+    "image": "/tiles-custom/hellas3p_type1_400x400-1.jpg"
+  },
+  {
+    "id": "mocca-3p",
+    "sku": "MOCCA-3P",
+    "name": "Mocca 3P",
+    "brand": "Japan Ceramic",
+    "collection": "Mocca",
+    "type": "clinker",
+    "size": "40×27.5",
+    "pricePerM2": 2950,
+    "currency": "KGS",
+    "color": "brown",
+    "texture": "clinker",
+    "image": "/tiles-custom/mocca_400x275_3p.jpg"
+  },
+  {
+    "id": "trend-7p",
+    "sku": "TREND-7P",
+    "name": "Trend 7P",
+    "brand": "Japan Ceramic",
+    "collection": "Trend",
+    "type": "clinker",
+    "size": "40×40",
+    "pricePerM2": 3300,
+    "currency": "KGS",
+    "color": "mixed",
+    "texture": "clinker",
+    "image": "/tiles-custom/trend_7p_400x400-1.jpg"
+  }
+]

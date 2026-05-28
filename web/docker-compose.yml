@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: japan_ceramic
+    ports:
+      - "5434:5432"
+    container_name: japan-ceramic-db
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
