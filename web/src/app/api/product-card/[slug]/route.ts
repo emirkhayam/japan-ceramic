@@ -18,7 +18,8 @@ export async function GET(
 
   if (!product) return new Response("Not found", { status: 404 });
 
-  const buffer = await renderToBuffer(createElement(ProductCardPdf, { product }));
+  const element = createElement(ProductCardPdf, { product }) as unknown as Parameters<typeof renderToBuffer>[0];
+  const buffer = await renderToBuffer(element);
 
   // Имя файла с кириллицей — через filename* (RFC 5987) + ASCII-fallback.
   const safe = `product-card-${product.slug}`.replace(/[^a-z0-9-]/gi, "-");
