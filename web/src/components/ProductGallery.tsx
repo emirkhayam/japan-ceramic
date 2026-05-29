@@ -180,7 +180,7 @@ export default function ProductGallery({
   return (
     <div>
       {/* Картинка с размерами по бокам; квадратная лупа следует за курсором (без обрезки рамкой) */}
-      <div className="relative mx-auto" style={{ paddingTop: dims ? PAD_T : 0, paddingRight: dims ? PAD_R : 0, width: (dims ? imgW + PAD_R : imgW), maxWidth: "100%" }}>
+      <div className="relative mx-auto w-full" style={{ paddingTop: dims ? PAD_T : 0, paddingRight: dims ? PAD_R : 0, maxWidth: (dims ? imgW + PAD_R : imgW) }}>
         <div
           ref={frameRef}
           role="img"
@@ -188,10 +188,9 @@ export default function ProductGallery({
           onClick={() => setOpen(true)}
           onMouseMove={onFrameMove}
           onMouseLeave={onFrameLeave}
-          className="group relative overflow-hidden"
+          className="group relative overflow-hidden w-full"
           style={{
-            width: imgW,
-            height: imgH,
+            aspectRatio: `${imgW} / ${imgH}`,
             backgroundImage: `url(${heroImage})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
@@ -218,7 +217,7 @@ export default function ProductGallery({
           <>
             <div
               className={`absolute left-0 top-0 flex items-center transition-opacity duration-200 ${z.active ? "opacity-0" : "opacity-100"}`}
-              style={{ height: PAD_T, width: imgW }}
+              style={{ height: PAD_T, right: PAD_R }}
             >
               <div className="w-px h-2 bg-[var(--line-2)]" />
               <div className="flex-1 h-px bg-[var(--line-2)]" />
@@ -228,7 +227,7 @@ export default function ProductGallery({
             </div>
             <div
               className={`absolute right-0 flex flex-col items-center transition-opacity duration-200 ${z.active ? "opacity-0" : "opacity-100"}`}
-              style={{ top: PAD_T, height: imgH, width: PAD_R }}
+              style={{ top: PAD_T, bottom: 0, width: PAD_R }}
             >
               <div className="h-px w-2 bg-[var(--line-2)]" />
               <div className="flex-1 w-px bg-[var(--line-2)]" />
