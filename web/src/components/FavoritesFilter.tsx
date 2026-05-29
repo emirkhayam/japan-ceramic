@@ -48,7 +48,7 @@ export default function FavoritesFilter({ favorites }: { favorites: FavoriteItem
                 <img
                   src={
                     fav.product.images[0]?.imageUrl ||
-                    "https://images.unsplash.com/photo-1640357897497-599b4fc84f51?q=80&w=800&auto=format&fit=crop"
+                    "/placeholder-tile.svg"
                   }
                   alt={fav.product.name}
                   className="w-full h-full object-cover grayscale-[.2] brightness-[.82] transition-all duration-[1.1s] ease-[var(--ease)] group-hover:scale-[1.06] group-hover:grayscale-0 group-hover:brightness-[.92]"
@@ -56,7 +56,7 @@ export default function FavoritesFilter({ favorites }: { favorites: FavoriteItem
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[rgba(8,10,15,.92)] via-[rgba(8,10,15,.05)] to-transparent" />
                 <div className="absolute left-[22px] right-[22px] bottom-[22px] z-[2]">
-                  <h3 className="text-xl font-light font-[family-name:var(--font-cormorant)]">
+                  <h3 className="text-xl font-medium font-[family-name:var(--font-serif)]">
                     {fav.product.name}
                   </h3>
                   <div className="text-[11px] tracking-[.22em] uppercase text-[var(--ink-mute)] mt-1">

@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { Manrope, Cormorant_Garamond } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
-const manrope = Manrope({
+const inter = Inter({
   subsets: ["latin", "cyrillic"],
-  variable: "--font-manrope",
-  weight: ["200", "300", "400", "500", "600", "700"],
+  variable: "--font-sans",
+  weight: ["300", "400", "500", "600", "700"],
 });
 
-const cormorant = Cormorant_Garamond({
+const playfair = Playfair_Display({
   subsets: ["latin", "cyrillic"],
-  variable: "--font-cormorant",
-  weight: ["400", "500"],
+  variable: "--font-serif",
+  weight: ["400", "500", "600", "700"],
   style: ["normal", "italic"],
 });
 
@@ -27,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru">
-      <body className={`${manrope.variable} ${cormorant.variable} font-[family-name:var(--font-manrope)]`}>
+      <body className={`${inter.variable} ${playfair.variable} font-[family-name:var(--font-sans)]`}>
         {children}
       </body>
     </html>

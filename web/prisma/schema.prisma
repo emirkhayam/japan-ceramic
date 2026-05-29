@@ -49,6 +49,9 @@ model Product {
   collection   String?
   color        String?
   isActive     Boolean        @default(true)
+  isNew        Boolean        @default(false)
+  isPopular    Boolean        @default(false)
+  isOnSale     Boolean        @default(false)
   createdAt    DateTime       @default(now())
   pdfUrl       String?
   zipUrl       String?

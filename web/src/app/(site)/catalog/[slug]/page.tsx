@@ -9,8 +9,7 @@ import ProductSpecs from "@/components/ProductSpecs";
 import ProductFeatureStrip from "@/components/ProductFeatureStrip";
 import TileCalculator from "@/components/TileCalculator";
 
-const FALLBACK_IMG =
-  "https://images.unsplash.com/photo-1640357897497-599b4fc84f51?q=80&w=400&auto=format&fit=crop";
+const FALLBACK_IMG = "/placeholder-tile.svg";
 
 // Pull the first two numbers out of free-form dimension strings like
 // "598 x 598 x 8 mm", "1198×598×10mm", "298×78×10mm".
@@ -21,27 +20,47 @@ function parseFormat(raw?: string | null) {
   return { w: nums[0], h: nums[1], t: nums[2] ?? null };
 }
 
+// Нормализация мини-карточки по длинной стороне (реальная ориентация),
+// как в каталоге — все плитки одного «габарита», никто не больше.
+function miniTileStyle(raw?: string | null) {
+  const f = parseFormat(raw);
+  if (!f) return { width: "88%", height: "88%" };
+  const w = parseFloat(f.w.replace(",", "."));
+  const h = parseFloat(f.h.replace(",", "."));
+  const longest = Math.max(w, h) || 1;
+  return { width: `${(88 * w) / longest}%`, height: `${(88 * h) / longest}%` };
+}
+
+function miniFormat(raw?: string | null) {
+  const f = parseFormat(raw);
+  return f ? `${f.w} × ${f.h} мм` : null;
+}
+
 type Spec = { key: string; label: string; value: string };
 
 function MiniProductCard({
   p,
 }: {
-  p: { slug: string; name: string; images: { imageUrl: string }[]; category: { name: string } };
+  p: { slug: string; name: string; dimensions: string | null; images: { imageUrl: string }[]; category: { name: string } };
 }) {
+  const fmt = miniFormat(p.dimensions);
   return (
-    <Link href={`/catalog/${p.slug}`} className="group cursor-pointer">
-      <div className="aspect-square overflow-hidden rounded border border-[var(--line)] bg-[#141619] mb-3 group-hover:border-[var(--line-2)] transition-colors duration-300">
-        <img
-          src={p.images[0]?.imageUrl || FALLBACK_IMG}
-          alt={p.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          loading="lazy"
-        />
+    <Link href={`/catalog/${p.slug}`} className="group block">
+      <div className="relative aspect-square overflow-hidden rounded-md bg-[rgba(255,255,255,.025)] flex items-center justify-center mb-2.5">
+        <div className="absolute inset-0 m-auto overflow-hidden rounded-sm" style={miniTileStyle(p.dimensions)}>
+          <img
+            src={p.images[0]?.imageUrl || FALLBACK_IMG}
+            alt={p.name}
+            className="w-full h-full object-cover transition-transform duration-700 ease-[var(--ease)] group-hover:scale-[1.05]"
+            loading="lazy"
+          />
+        </div>
       </div>
-      <div className="text-[14px] text-[var(--ink-soft)] group-hover:text-[var(--ink)] transition-colors duration-200">
+      <div className="text-[10px] tracking-[.16em] uppercase text-[var(--ink-faint)] mb-1">{p.category.name}</div>
+      <div className="text-[13.5px] text-[var(--ink-soft)] group-hover:text-[var(--ink)] transition-colors duration-200 leading-snug">
         {p.name}
       </div>
-      <div className="text-[11px] text-[var(--ink-faint)] mt-0.5">{p.category.name}</div>
+      {fmt && <div className="text-[11px] text-[var(--ink-mute)] mt-1 tabular-nums">{fmt}</div>}
     </Link>
   );
 }
@@ -101,6 +120,13 @@ export default async function ProductDetailPage({
   const thicknessText =
     product.thickness || (fmt?.t ? `${fmt.t} мм` : null);
 
+  // Мини-диаграмма пропорции плитки (реальная ориентация, макс. сторона 56px)
+  const fw = fmt ? parseFloat(fmt.w.replace(",", ".")) : 0;
+  const fh = fmt ? parseFloat(fmt.h.replace(",", ".")) : 0;
+  const dgMax = Math.max(fw, fh) || 1;
+  const dgW = Math.max(6, Math.round(56 * (fw / dgMax)));
+  const dgH = Math.max(6, Math.round(56 * (fh / dgMax)));
+
   // Headline features shown as icon chips near the top
   const headline = (
     [
@@ -114,33 +140,34 @@ export default async function ProductDetailPage({
     ] as { key: string; label: string; value: string | null }[]
   ).filter((f) => f.value) as Spec[];
 
-  // Full parameter table
-  const parameters = (
+  const designTags = [product.color, product.surface].filter(Boolean) as string[];
+
+  // Полная таблица характеристик на всю ширину (как у Tubadzin):
+  // Тип/Коллекция + параметры + упаковка. Делим на две колонки.
+  const characteristics = (
     [
+      { key: "category", label: "Тип продукта", value: product.category.name },
+      { key: "collection", label: "Коллекция", value: product.collection },
       { key: "dimensions", label: "Размер", value: product.dimensions },
       { key: "thickness", label: "Толщина", value: thicknessText },
       { key: "surface", label: "Поверхность", value: product.surface },
       { key: "color", label: "Цвет", value: product.color },
+      { key: "application", label: "Применение", value: product.application },
       { key: "wearResistance", label: "Износостойкость", value: product.wearResistance },
       { key: "antiSlip", label: "Противоскольжение", value: product.antiSlip },
       { key: "rectified", label: "Ректификация", value: product.rectified },
       { key: "frostResistant", label: "Морозостойкость", value: product.frostResistant },
       { key: "stainResistant", label: "Устойчивость к пятнам", value: product.stainResistant },
       { key: "technology", label: "Технология", value: product.technology },
-    ] as { key: string; label: string; value: string | null }[]
-  ).filter((s) => s.value) as Spec[];
-
-  // Packaging table
-  const packaging = (
-    [
       { key: "weight", label: "Вес плитки", value: product.weight },
       { key: "boxQuantity", label: "Кол-во в коробке", value: product.boxQuantity },
       { key: "boxArea", label: "Площадь коробки", value: product.boxArea },
       { key: "boxWeight", label: "Вес коробки", value: product.boxWeight },
     ] as { key: string; label: string; value: string | null }[]
   ).filter((s) => s.value) as Spec[];
-
-  const designTags = [product.color, product.surface].filter(Boolean) as string[];
+  const half = Math.ceil(characteristics.length / 2);
+  const charColA = characteristics.slice(0, half);
+  const charColB = characteristics.slice(half);
 
   return (
     <>
@@ -156,23 +183,39 @@ export default async function ProductDetailPage({
       </nav>
 
       {/* Product section */}
-      <div className="max-w-[1320px] mx-auto px-10 max-md:px-5 pb-20">
-        <div className="flex max-md:flex-col gap-10 lg:gap-16">
+      <div className="max-w-[1320px] mx-auto px-10 max-md:px-5 pb-16">
+        {/* Герой: картинка слева + информация справа */}
+        <div className="grid lg:grid-cols-[minmax(0,560px)_1fr] gap-12 xl:gap-16 items-start">
 
-          {/* ---- LEFT: Image + Calculator ---- */}
-          <div className="w-full md:w-[420px] lg:w-[480px] md:max-w-[480px] shrink-0">
+          {/* ---- Картинка + калькулятор (слева, липкая) ---- */}
+          <div className="lg:sticky lg:top-24">
             <ProductGallery
               images={product.images.map((img) => ({ id: img.id, imageUrl: img.imageUrl }))}
               productName={product.name}
               dimensions={product.dimensions}
             />
-            <div className="mt-10">
+            {/* Калькулятор — под картинкой */}
+            <div className="mt-8">
               <TileCalculator dimensions={product.dimensions} boxQuantity={product.boxQuantity} />
             </div>
           </div>
 
-          {/* ---- RIGHT: Info ---- */}
-          <div className="flex-1 min-w-0">
+          {/* ---- Информация (справа) ---- */}
+          <div className="min-w-0">
+            {/* Badges */}
+            {(product.isNew || product.isPopular || product.isOnSale) && (
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                {product.isPopular && (
+                  <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[rgba(255,255,255,.08)] text-[var(--ink)] border border-white/15">Хит</span>
+                )}
+                {product.isNew && (
+                  <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[var(--color-gold-500)] text-[#0a0d12]">Новинка</span>
+                )}
+                {product.isOnSale && (
+                  <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[#c0392b] text-white">Акция</span>
+                )}
+              </div>
+            )}
 
             {/* Tags row */}
             <div className="flex flex-wrap items-center gap-2 mb-5">
@@ -204,17 +247,23 @@ export default async function ProductDetailPage({
             )}
 
             {/* Name */}
-            <h1 className="text-[clamp(24px,3vw,36px)] font-light leading-[1.2] tracking-tight mb-6">
+            <h1 className="text-[clamp(28px,3vw,40px)] font-light leading-[1.12] tracking-tight mb-5">
               {product.name}
             </h1>
 
             {/* Big format */}
             {fmt && (
-              <div className="flex items-end gap-5 mb-8 pb-8 border-b border-[var(--line)]">
+              <div className="flex items-end gap-5 mb-7 pb-7 border-b border-[var(--line)]">
+                <div className="shrink-0 w-[56px] h-[56px] flex items-center justify-center mb-1">
+                  <span
+                    className="block border border-[var(--ink-mute)] rounded-[1px] bg-[rgba(255,255,255,.03)]"
+                    style={{ width: dgW, height: dgH }}
+                  />
+                </div>
                 <div className="flex items-baseline gap-2.5">
-                  <span className="text-[clamp(44px,7vw,80px)] font-extralight leading-none tracking-tight tabular-nums">{fmt.w}</span>
-                  <span className="text-[clamp(26px,4vw,44px)] font-extralight text-[var(--ink-faint)] leading-none">×</span>
-                  <span className="text-[clamp(44px,7vw,80px)] font-extralight leading-none tracking-tight tabular-nums">{fmt.h}</span>
+                  <span className="text-[clamp(40px,5vw,64px)] font-extralight leading-none tracking-tight tabular-nums">{fmt.w}</span>
+                  <span className="text-[clamp(24px,3.4vw,40px)] font-extralight text-[var(--ink-faint)] leading-none">×</span>
+                  <span className="text-[clamp(40px,5vw,64px)] font-extralight leading-none tracking-tight tabular-nums">{fmt.h}</span>
                   <span className="text-[13px] tracking-[.12em] uppercase text-[var(--ink-mute)] ml-1.5 self-end mb-2">мм</span>
                 </div>
                 {thicknessText && (
@@ -230,15 +279,16 @@ export default async function ProductDetailPage({
 
             {/* Description */}
             {product.description && (
-              <p className="text-[15px] leading-[1.75] text-[var(--ink-soft)] mb-8 max-w-[560px]">
+              <p className="text-[15px] leading-[1.75] text-[var(--ink-soft)] mt-2 max-w-[640px]">
                 {product.description}
               </p>
             )}
 
-            {/* Actions */}
+            {/* ---- Действия / материалы / калькулятор / салон ---- */}
+            <div className="mt-9 pt-8 border-t border-[var(--line)] space-y-6 max-w-[560px]">
             {user && (
-              <div className="mb-10">
-                <div className="flex gap-2.5 mb-3">
+              <div className="space-y-3">
+                <div className="flex gap-2.5">
                   <FavoriteButton productId={product.id} isFavorited={isFavorited} />
                   <AddToProjectButton productId={product.id} />
                 </div>
@@ -257,79 +307,70 @@ export default async function ProductDetailPage({
               </div>
             )}
 
-            {/* Parameters */}
-            {parameters.length > 0 && (
-              <div className="mb-10">
-                <h2 className="text-[11px] tracking-[.22em] uppercase text-[var(--ink-mute)] mb-3">
-                  Параметры
-                </h2>
-                <ProductSpecs specs={parameters} />
+            {/* Materials */}
+            <div>
+              <h2 className="text-[11px] tracking-[.22em] uppercase text-[var(--ink-mute)] mb-3">
+                Материалы для проекта
+              </h2>
+              <div className="flex flex-col gap-2.5">
+                <a
+                  href={product.pdfUrl || `/api/product-card/${product.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[var(--ink-mute)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)] transition-colors"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <div>
+                    <div className="text-[13px] font-medium text-[var(--ink-soft)] group-hover:text-[var(--ink)] transition-colors">Карта продукта</div>
+                    <div className="text-[10px] text-[var(--ink-faint)] uppercase tracking-wider">PDF</div>
+                  </div>
+                </a>
+                {product.zipUrl && (
+                  <a
+                    href={product.zipUrl}
+                    download
+                    className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[var(--ink-mute)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)] transition-colors"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <div>
+                      <div className="text-[13px] font-medium text-[var(--ink-soft)] group-hover:text-[var(--ink)] transition-colors">Текстуры для 3D</div>
+                      <div className="text-[10px] text-[var(--ink-faint)] uppercase tracking-wider">ZIP</div>
+                    </div>
+                  </a>
+                )}
               </div>
-            )}
+            </div>
 
-            {/* Packaging */}
-            {packaging.length > 0 && (
-              <div className="mb-10">
-                <h2 className="text-[11px] tracking-[.22em] uppercase text-[var(--ink-mute)] mb-3">
-                  Упаковка
-                </h2>
-                <ProductSpecs specs={packaging} />
-              </div>
-            )}
-
-            {/* Downloads */}
-            {(product.pdfUrl || product.zipUrl) && (
-              <div className="mb-10">
-                <h2 className="text-[11px] tracking-[.22em] uppercase text-[var(--ink-mute)] mb-4">
-                  Материалы для проекта
-                </h2>
-                <div className="flex gap-3 flex-wrap">
-                  {product.pdfUrl && (
-                    <a
-                      href={product.pdfUrl}
-                      download
-                      className="group flex items-center gap-3 px-5 py-3 border border-[var(--line-2)] rounded-sm hover:border-[var(--ink-mute)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)] transition-colors"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      <div>
-                        <div className="text-[13px] font-medium text-[var(--ink-soft)] group-hover:text-[var(--ink)] transition-colors">Карта продукта</div>
-                        <div className="text-[10px] text-[var(--ink-faint)] uppercase tracking-wider">PDF</div>
-                      </div>
-                    </a>
-                  )}
-                  {product.zipUrl && (
-                    <a
-                      href={product.zipUrl}
-                      download
-                      className="group flex items-center gap-3 px-5 py-3 border border-[var(--line-2)] rounded-sm hover:border-[var(--ink-mute)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)] transition-colors"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      <div>
-                        <div className="text-[13px] font-medium text-[var(--ink-soft)] group-hover:text-[var(--ink)] transition-colors">Текстуры для 3D</div>
-                        <div className="text-[10px] text-[var(--ink-faint)] uppercase tracking-wider">ZIP</div>
-                      </div>
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Inline CTA */}
+            {/* CTA салон */}
             <div className="p-6 rounded border border-[var(--line)] bg-[rgba(255,255,255,.02)]">
-              <p className="text-[15px] text-[var(--ink-soft)] mb-4">
+              <p className="text-[14px] text-[var(--ink-soft)] mb-4">
                 Хотите увидеть и потрогать материал вживую?
               </p>
               <a
                 href="/#contacts"
-                className="inline-flex items-center gap-2.5 px-6 py-3 text-[13px] font-medium tracking-[.08em] uppercase border border-[var(--ink)] text-[var(--ink)] rounded-sm hover:bg-[var(--ink)] hover:text-[#0a0d12] transition-all duration-300 cursor-pointer"
+                className="inline-flex items-center gap-2.5 px-5 py-3 text-[13px] font-medium tracking-[.08em] uppercase border border-[var(--ink)] text-[var(--ink)] rounded-sm hover:bg-[var(--ink)] hover:text-[#0a0d12] transition-all duration-300 cursor-pointer"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z" fill="currentColor"/></svg>
                 Найти наш салон
               </a>
             </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Характеристики — на всю ширину, две колонки (как у Tubadzin) */}
+      {characteristics.length > 0 && (
+        <section className="border-t border-[var(--line)] py-16">
+          <div className="max-w-[1320px] mx-auto px-10 max-md:px-5">
+            <h2 className="text-[clamp(20px,2.4vw,30px)] font-extralight mb-10">Характеристики</h2>
+            <div className="grid md:grid-cols-2 gap-x-16 gap-y-0">
+              <ProductSpecs specs={charColA} />
+              <ProductSpecs specs={charColB} />
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Other products in the collection */}
       {collectionProducts.length > 0 && (

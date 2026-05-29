@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   if (!user || user.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await request.json();
-  const { name, slug, categoryId, description, price, dimensions, surface, weight, collection, color, images } = body;
+  const { name, slug, categoryId, description, price, dimensions, surface, weight, collection, color, isNew, isPopular, isOnSale, images } = body;
 
   // Only name + category are truly required — the slug is derived from the
   // name when the client doesn't send one, and always made unique.
@@ -59,6 +59,9 @@ export async function POST(request: NextRequest) {
       weight: weight || null,
       collection: collection || null,
       color: color || null,
+      isNew: !!isNew,
+      isPopular: !!isPopular,
+      isOnSale: !!isOnSale,
       images: images?.length ? {
         create: images.map((url: string, i: number) => ({
           imageUrl: url,

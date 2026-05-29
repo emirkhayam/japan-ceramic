@@ -7,23 +7,31 @@ interface ProductImage {
   imageUrl: string;
 }
 
-const FALLBACK =
-  "https://images.unsplash.com/photo-1640357897497-599b4fc84f51?q=80&w=1600&auto=format&fit=crop";
+const FALLBACK = "/placeholder-tile.svg";
 
-// Hover-zoom factor and the size of the loupe that follows the cursor.
-const ZOOM = 2.6;
-const LOUPE = 200;
-// Space reserved around the frame for the dimension lines.
-const PAD_T = 28;
-const PAD_R = 44;
+// Кратность увеличения в лупе.
+const ZOOM = 2.4;
+// Длинная сторона картинки (фокус героя, но не гигантская).
+const IMG_MAX = 520;
+// Квадратная лупа, следующая за курсором.
+const LOUPE = 240;
+// Место под размерные линии (длина сверху, ширина справа).
+const PAD_T = 30;
+const PAD_R = 46;
 
-// Pull the first two numbers out of "598 x 598 x 8 mm" → { w: "598", h: "598" }.
 function parseDims(raw?: string | null) {
   if (!raw) return null;
   const nums = raw.match(/\d+(?:[.,]\d+)?/g);
   if (!nums || nums.length < 2) return null;
-  return { w: nums[0], h: nums[1] };
+  return {
+    w: nums[0].replace(".", ","),
+    h: nums[1].replace(".", ","),
+    wn: parseFloat(nums[0].replace(",", ".")),
+    hn: parseFloat(nums[1].replace(",", ".")),
+  };
 }
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 type ZoomState = {
   active: boolean;
@@ -32,6 +40,8 @@ type ZoomState = {
   fw: number;
   fh: number;
 };
+
+const ZOOM_OFF: ZoomState = { active: false, cx: 0, cy: 0, fw: 0, fh: 0 };
 
 export default function ProductGallery({
   images,
@@ -43,18 +53,15 @@ export default function ProductGallery({
   dimensions?: string | null;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
-
   const dims = parseDims(dimensions);
 
-  // Hover magnifier (desktop only)
-  const [canHoverZoom, setCanHoverZoom] = useState(false);
-  const [z, setZ] = useState<ZoomState>({
-    active: false,
-    cx: 0,
-    cy: 0,
-    fw: 0,
-    fh: 0,
-  });
+  // Размер картинки в реальной пропорции плитки, длинная сторона = IMG_MAX.
+  const ratio = dims ? Math.max(0.4, Math.min(3, dims.wn / dims.hn)) : 1;
+  const imgW = ratio >= 1 ? IMG_MAX : Math.round(IMG_MAX * ratio);
+  const imgH = ratio >= 1 ? Math.round(IMG_MAX / ratio) : IMG_MAX;
+
+  const [canZoom, setCanZoom] = useState(false);
+  const [z, setZ] = useState<ZoomState>(ZOOM_OFF);
   const frameRef = useRef<HTMLDivElement>(null);
 
   // Lightbox
@@ -69,12 +76,9 @@ export default function ProductGallery({
   const heroImage = images[activeIndex]?.imageUrl || FALLBACK;
   const count = images.length;
 
-  // Enable the lens + side panel only where there's room and a real pointer.
   useEffect(() => {
-    const mq = window.matchMedia(
-      "(min-width: 1024px) and (hover: hover) and (pointer: fine)"
-    );
-    const update = () => setCanHoverZoom(mq.matches);
+    const mq = window.matchMedia("(min-width: 1024px) and (hover: hover) and (pointer: fine)");
+    const update = () => setCanZoom(mq.matches);
     update();
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
@@ -82,20 +86,17 @@ export default function ProductGallery({
 
   const onFrameMove = useCallback(
     (e: React.MouseEvent) => {
-      if (!canHoverZoom) return;
-      const el = frameRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const cx = Math.max(0, Math.min(r.width, e.clientX - r.left));
-      const cy = Math.max(0, Math.min(r.height, e.clientY - r.top));
-      setZ({ active: true, cx, cy, fw: r.width, fh: r.height });
+      if (!canZoom) return;
+      const f = frameRef.current?.getBoundingClientRect();
+      if (!f) return;
+      const cx = clamp(e.clientX - f.left, 0, f.width);
+      const cy = clamp(e.clientY - f.top, 0, f.height);
+      setZ({ active: true, cx, cy, fw: f.width, fh: f.height });
     },
-    [canHoverZoom]
+    [canZoom]
   );
 
-  const onFrameLeave = useCallback(() => {
-    setZ((s) => ({ ...s, active: false }));
-  }, []);
+  const onFrameLeave = useCallback(() => setZ((s) => ({ ...s, active: false })), []);
 
   const resetZoom = useCallback(() => {
     setScale(1);
@@ -116,7 +117,6 @@ export default function ProductGallery({
     resetZoom();
   }, [resetZoom]);
 
-  // Body scroll lock + keyboard nav while lightbox open
   useEffect(() => {
     if (!open) return;
     const prevOverflow = document.body.style.overflow;
@@ -133,7 +133,6 @@ export default function ProductGallery({
     };
   }, [open, closeLightbox, go]);
 
-  // Non-passive wheel listener so we can preventDefault and zoom
   useEffect(() => {
     const el = overlayRef.current;
     if (!open || !el) return;
@@ -149,7 +148,6 @@ export default function ProductGallery({
     return () => el.removeEventListener("wheel", onWheel);
   }, [open]);
 
-  // Lightbox drag-to-pan
   function onPointerDown(e: React.MouseEvent) {
     if (scale <= 1) return;
     draggingRef.current = true;
@@ -179,16 +177,10 @@ export default function ProductGallery({
     });
   }
 
-  const dimsHidden = z.active; // hide dimension lines while magnifying
-
   return (
     <div>
-      {/* Image + dimension lines + side magnifier */}
-      <div
-        className="relative"
-        style={{ paddingTop: dims ? PAD_T : 0, paddingRight: dims ? PAD_R : 0 }}
-      >
-        {/* Main image — hover to magnify, click to open the fullscreen lightbox */}
+      {/* Картинка с размерами по бокам; квадратная лупа следует за курсором (без обрезки рамкой) */}
+      <div className="relative mx-auto" style={{ paddingTop: dims ? PAD_T : 0, paddingRight: dims ? PAD_R : 0, width: (dims ? imgW + PAD_R : imgW), maxWidth: "100%" }}>
         <div
           ref={frameRef}
           role="img"
@@ -196,45 +188,20 @@ export default function ProductGallery({
           onClick={() => setOpen(true)}
           onMouseMove={onFrameMove}
           onMouseLeave={onFrameLeave}
-          className="group relative w-full aspect-square overflow-hidden rounded-lg border border-[var(--line)] bg-[#111418]"
+          className="group relative overflow-hidden"
           style={{
+            width: imgW,
+            height: imgH,
             backgroundImage: `url(${heroImage})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
-            cursor: canHoverZoom ? "crosshair" : "zoom-in",
+            cursor: canZoom ? "crosshair" : "zoom-in",
           }}
         >
-          {/* Loupe — follows the cursor, clipped to the image */}
-          {z.active && (
-            <div
-              className="absolute z-30 pointer-events-none rounded-lg overflow-hidden border border-white/25 shadow-[0_12px_40px_rgba(0,0,0,.55)]"
-              style={{
-                width: LOUPE,
-                height: LOUPE,
-                left: z.cx - LOUPE / 2,
-                top: z.cy - LOUPE / 2,
-              }}
-            >
-              <img
-                src={heroImage}
-                alt=""
-                draggable={false}
-                style={{
-                  width: z.fw,
-                  height: z.fh,
-                  maxWidth: "none",
-                  objectFit: "cover",
-                  transformOrigin: "0 0",
-                  transform: `translate(${LOUPE / 2 - ZOOM * z.cx}px, ${LOUPE / 2 - ZOOM * z.cy}px) scale(${ZOOM})`,
-                }}
-              />
-            </div>
-          )}
-
-          {/* Hint badge */}
+          {/* Иконка-лупа в углу */}
           <div
-            className={`absolute bottom-4 right-4 flex items-center gap-2 pl-3 pr-3.5 py-2 rounded-full bg-[rgba(0,0,0,.55)] backdrop-blur-sm border border-[rgba(255,255,255,.12)] text-[var(--ink-soft)] text-[12px] tracking-[.04em] pointer-events-none transition-opacity duration-200 group-hover:bg-[rgba(0,0,0,.78)] group-hover:text-[var(--ink)] ${
+            className={`absolute bottom-3 right-3 flex items-center justify-center w-8 h-8 rounded-full bg-[rgba(0,0,0,.55)] backdrop-blur-sm border border-[rgba(255,255,255,.12)] text-[var(--ink-soft)] pointer-events-none transition-opacity duration-200 group-hover:text-[var(--ink)] ${
               z.active ? "opacity-0" : "opacity-100"
             }`}
           >
@@ -243,61 +210,64 @@ export default function ProductGallery({
               <path d="M14 14l-3.5-3.5" />
               <path d="M6.5 4.5v4M4.5 6.5h4" />
             </svg>
-            {canHoverZoom ? "Наведите для увеличения" : "Нажмите для увеличения"}
           </div>
         </div>
 
-        {/* Dimension lines */}
+        {/* Размерные линии — длина сверху, ширина справа */}
         {dims && (
           <>
-            {/* Width — top */}
             <div
-              className={`absolute left-0 top-0 flex items-center transition-opacity duration-200 ${
-                dimsHidden ? "opacity-0" : "opacity-100"
-              }`}
-              style={{ height: PAD_T, width: `calc(100% - ${PAD_R}px)` }}
+              className={`absolute left-0 top-0 flex items-center transition-opacity duration-200 ${z.active ? "opacity-0" : "opacity-100"}`}
+              style={{ height: PAD_T, width: imgW }}
             >
               <div className="w-px h-2 bg-[var(--line-2)]" />
               <div className="flex-1 h-px bg-[var(--line-2)]" />
-              <span className="px-2 text-[11px] tracking-[.08em] text-[var(--ink-mute)] tabular-nums whitespace-nowrap">
-                {dims.w} мм
-              </span>
+              <span className="px-2 text-[11px] tracking-[.08em] text-[var(--ink-mute)] tabular-nums whitespace-nowrap">{dims.w} мм</span>
               <div className="flex-1 h-px bg-[var(--line-2)]" />
               <div className="w-px h-2 bg-[var(--line-2)]" />
             </div>
-
-            {/* Height — right */}
             <div
-              className={`absolute right-0 flex flex-col items-center transition-opacity duration-200 ${
-                dimsHidden ? "opacity-0" : "opacity-100"
-              }`}
-              style={{ top: PAD_T, height: `calc(100% - ${PAD_T}px)`, width: PAD_R }}
+              className={`absolute right-0 flex flex-col items-center transition-opacity duration-200 ${z.active ? "opacity-0" : "opacity-100"}`}
+              style={{ top: PAD_T, height: imgH, width: PAD_R }}
             >
               <div className="h-px w-2 bg-[var(--line-2)]" />
               <div className="flex-1 w-px bg-[var(--line-2)]" />
-              <span className="-rotate-90 my-1 text-[11px] tracking-[.08em] text-[var(--ink-mute)] tabular-nums whitespace-nowrap">
-                {dims.h} мм
-              </span>
+              <span className="-rotate-90 my-1 text-[11px] tracking-[.08em] text-[var(--ink-mute)] tabular-nums whitespace-nowrap">{dims.h} мм</span>
               <div className="flex-1 w-px bg-[var(--line-2)]" />
               <div className="h-px w-2 bg-[var(--line-2)]" />
             </div>
           </>
         )}
 
+        {/* Квадратная лупа — сосед рамки, не обрезается её краями (выходит за пределы) */}
+        {z.active && (
+          <div
+            className="absolute z-40 pointer-events-none overflow-hidden rounded-md border border-white/30 shadow-[0_18px_50px_rgba(0,0,0,.6)] ring-1 ring-black/40"
+            style={{ width: LOUPE, height: LOUPE, left: z.cx - LOUPE / 2, top: (dims ? PAD_T : 0) + z.cy - LOUPE / 2 }}
+          >
+            <div
+              className="absolute inset-0"
+              style={{
+                backgroundImage: `url(${heroImage})`,
+                backgroundRepeat: "no-repeat",
+                backgroundSize: `${z.fw * ZOOM}px ${z.fh * ZOOM}px`,
+                backgroundPosition: `${LOUPE / 2 - z.cx * ZOOM}px ${LOUPE / 2 - z.cy * ZOOM}px`,
+              }}
+            />
+            <div className="absolute inset-0 rounded-md ring-1 ring-inset ring-[var(--color-gold-400)]/20" />
+          </div>
+        )}
       </div>
 
-      {/* Thumbnails */}
+      {/* Миниатюры */}
       {count > 1 && (
-        <div
-          className="flex gap-2 mt-3 overflow-x-auto"
-          style={{ paddingRight: dims ? PAD_R : 0 }}
-        >
+        <div className="flex gap-2 mt-4 overflow-x-auto" style={{ maxWidth: imgW + PAD_R }}>
           {images.map((img, i) => (
             <button
               key={img.id}
               type="button"
               onClick={() => setActiveIndex(i)}
-              className={`w-[80px] h-[80px] shrink-0 overflow-hidden rounded-md border cursor-pointer transition-all duration-200 ${
+              className={`w-[68px] h-[68px] shrink-0 overflow-hidden rounded-md border cursor-pointer transition-all duration-200 ${
                 i === activeIndex
                   ? "border-[var(--ink)] opacity-100 ring-1 ring-[var(--ink)]"
                   : "border-[var(--line)] opacity-50 hover:opacity-80 hover:border-[var(--ink-soft)]"
@@ -319,7 +289,6 @@ export default function ProductGallery({
           onMouseUp={onPointerUp}
           onMouseLeave={onPointerUp}
         >
-          {/* Close */}
           <button
             type="button"
             onClick={closeLightbox}
@@ -331,15 +300,11 @@ export default function ProductGallery({
             </svg>
           </button>
 
-          {/* Counter + zoom hint */}
           <div className="absolute top-6 left-6 flex items-center gap-3 text-[12px] tracking-[.1em] text-[var(--ink-mute)] z-10">
             {count > 1 && <span>{activeIndex + 1} / {count}</span>}
-            <span className="text-[var(--ink-faint)]">
-              {scale > 1 ? "потяните, чтобы переместить" : "колесо или клик — приблизить"}
-            </span>
+            <span className="text-[var(--ink-faint)]">{scale > 1 ? "потяните, чтобы переместить" : "колесо или клик — приблизить"}</span>
           </div>
 
-          {/* Prev / Next */}
           {count > 1 && (
             <>
               <button
@@ -361,7 +326,6 @@ export default function ProductGallery({
             </>
           )}
 
-          {/* Image */}
           <img
             src={heroImage}
             alt={productName}
@@ -377,7 +341,6 @@ export default function ProductGallery({
             }}
           />
 
-          {/* Lightbox thumbnails */}
           {count > 1 && (
             <div
               className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-2 max-w-[90vw] overflow-x-auto px-2"
@@ -389,9 +352,7 @@ export default function ProductGallery({
                   type="button"
                   onClick={() => { setActiveIndex(i); resetZoom(); }}
                   className={`w-[60px] h-[60px] shrink-0 overflow-hidden rounded border cursor-pointer transition-all duration-200 ${
-                    i === activeIndex
-                      ? "border-[var(--ink)] opacity-100"
-                      : "border-[var(--line)] opacity-45 hover:opacity-80"
+                    i === activeIndex ? "border-[var(--ink)] opacity-100" : "border-[var(--line)] opacity-45 hover:opacity-80"
                   }`}
                 >
                   <img src={img.imageUrl} alt="" className="w-full h-full object-cover" />

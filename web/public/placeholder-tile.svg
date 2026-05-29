@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800" fill="none">
+  <rect width="800" height="800" fill="#11161f"/>
+  <rect width="800" height="800" fill="url(#g)"/>
+  <g stroke="#3a424e" stroke-width="2" opacity="0.7">
+    <rect x="300" y="300" width="200" height="200" rx="6"/>
+    <circle cx="356" cy="356" r="20" fill="#3a424e" stroke="none"/>
+    <path d="M300 452 L372 388 L432 436 L500 376 L500 494 a6 6 0 0 1 -6 6 H306 a6 6 0 0 1 -6 -6 Z" fill="#2a313b" stroke="none"/>
+  </g>
+  <text x="400" y="560" font-family="Inter, sans-serif" font-size="26" font-weight="500" letter-spacing="2" fill="#6f7782" text-anchor="middle">ФОТО НЕ ДОБАВЛЕНО</text>
+  <defs>
+    <radialGradient id="g" cx="50%" cy="42%" r="60%">
+      <stop offset="0%" stop-color="#161c26"/>
+      <stop offset="100%" stop-color="#0c1018"/>
+    </radialGradient>
+  </defs>
+</svg>
