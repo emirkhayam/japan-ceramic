@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import BrandLogo from "@/components/BrandLogo";
 
 function IconDashboard({ className }: { className?: string }) {
   return (
@@ -69,9 +70,19 @@ function IconLogout({ className }: { className?: string }) {
   );
 }
 
+function IconCollections({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="14" height="10" rx="1.5" />
+      <path d="M4.5 14.5h9M6 17h6" />
+    </svg>
+  );
+}
+
 const items = [
   { href: "/admin", label: "Дашборд", exact: true, Icon: IconDashboard },
   { href: "/admin/products", label: "Товары", Icon: IconProducts },
+  { href: "/admin/collections", label: "Коллекции", Icon: IconCollections },
   { href: "/admin/categories", label: "Категории", Icon: IconCategories },
   { href: "/admin/leads", label: "Заявки", Icon: IconLeads },
   { href: "/admin/users", label: "Пользователи", Icon: IconUsers },
@@ -85,11 +96,8 @@ export function AdminSidebar() {
   return (
     <aside className="md:w-[220px] shrink-0">
       <div className="md:sticky md:top-[32px]">
-        <Link href="/" className="hidden md:flex flex-col leading-[.92] mb-8 px-3">
-          <b className="font-light text-lg tracking-[.26em]">JAPAN</b>
-          <span className="font-semibold text-[7.5px] tracking-[.46em] text-[var(--ink-mute)] pl-[1px]">
-            CERAMIC
-          </span>
+        <Link href="/" className="hidden md:flex mb-8 px-3" aria-label="Japan Ceramic — на главную">
+          <BrandLogo height={24} wordSize={12} />
         </Link>
 
         <div className="text-[10px] font-medium tracking-[.3em] uppercase text-[var(--ink-faint)] px-3 mb-3 hidden md:block">

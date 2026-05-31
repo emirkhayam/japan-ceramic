@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 import { Document, Page, View, Text, Image, StyleSheet, Font } from "@react-pdf/renderer";
 
@@ -9,6 +10,16 @@ Font.register({
     { src: path.join(process.cwd(), "public/fonts/DejaVuSans-Bold.ttf"), fontWeight: 700 },
   ],
 });
+
+// Фирменный шрифт логотипа (латиница) из брендбука Japan Ceramic.
+Font.register({
+  family: "Krona One",
+  fonts: [{ src: path.join(process.cwd(), "public/fonts/KronaOne-Regular.ttf"), fontWeight: 400 }],
+});
+
+// Золотой знак-монограмма для шапки карты. Читаем в Buffer:
+// react-pdf на Windows иначе принимает локальный путь за URL и не грузит файл.
+const LOGO_MARK = { data: fs.readFileSync(path.join(process.cwd(), "public/logo-mark-gold.png")), format: "png" as const };
 
 export type CardProduct = {
   name: string;
@@ -45,16 +56,18 @@ function pdfImageUrl(url: string | undefined): string | undefined {
   return url;
 }
 
-const GOLD = "#b0863c";
-const INK = "#1a1d22";
+const GOLD = "#cead78";
+const INK = "#23204a";
 const MUTE = "#6b7178";
 const LINE = "#e2e4e8";
 
 const s = StyleSheet.create({
   page: { paddingTop: 40, paddingBottom: 56, paddingHorizontal: 46, fontFamily: "DejaVu", fontSize: 10, color: INK },
   runHead: { position: "absolute", top: 18, left: 46, right: 46, textAlign: "center", fontSize: 8, color: MUTE },
-  logo: { fontSize: 17, fontWeight: 700, letterSpacing: 2, color: INK },
-  rule: { height: 2, backgroundColor: GOLD, marginTop: 8, marginBottom: 22 },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+  brandMark: { width: 40, height: 21 },
+  logo: { fontFamily: "Krona One", fontSize: 15, letterSpacing: 1.2, color: INK },
+  rule: { height: 2, backgroundColor: GOLD, marginTop: 9, marginBottom: 22 },
   title: { fontSize: 24, fontWeight: 700, lineHeight: 1.15, marginBottom: 18 },
   top: { flexDirection: "row", gap: 22, marginBottom: 26, alignItems: "flex-start" },
   imgStage: { width: 250, height: 250, border: `1pt solid ${LINE}`, borderRadius: 3, padding: 6, alignItems: "center", justifyContent: "center" },
@@ -96,7 +109,10 @@ export function ProductCardPdf({ product }: { product: CardProduct }) {
       <Page size="A4" style={s.page}>
         <Text style={s.runHead} fixed>{footer}</Text>
 
-        <Text style={s.logo}>JAPAN CERAMIC</Text>
+        <View style={s.brandRow}>
+          <Image src={LOGO_MARK} style={s.brandMark} />
+          <Text style={s.logo}>JAPAN CERAMIC</Text>
+        </View>
         <View style={s.rule} />
 
         <Text style={s.title}>{product.name}</Text>

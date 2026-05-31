@@ -47,6 +47,8 @@ model Product {
   surface      String?
   weight       String?
   collection   String?
+  collectionId    String?
+  collectionOrder Int         @default(0)
   color        String?
   isActive     Boolean        @default(true)
   isNew        Boolean        @default(false)
@@ -69,9 +71,29 @@ model Product {
   favorites      Favorite[]
   images       ProductImage[]
   category     Category       @relation(fields: [categoryId], references: [id])
+  collectionRef Collection?   @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   projectItems ProjectItem[]
 
   @@map("products")
+}
+
+model Collection {
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique
+  description   String?
+  coverImageUrl String?
+  spaceTag      String?
+  styleTag      String?
+  isNew         Boolean   @default(false)
+  isRecommended Boolean   @default(false)
+  status        String    @default("draft")
+  sortOrder     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  products      Product[]
+
+  @@map("collections")
 }
 
 model ProductImage {

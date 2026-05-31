@@ -5,9 +5,19 @@ import Link from "next/link";
 
 interface Props {
   user: { fullName: string; role: string } | null;
+  collections: { slug: string; name: string; img: string | null; desc: string }[];
 }
 
-export default function LandingContent({ user }: Props) {
+// Фолбэк для блока «Пространства», если опубликованных коллекций ещё нет.
+const ATMO_FALLBACK = [
+  { img: "https://images.unsplash.com/photo-1610659856580-323ec67011f9?q=80&w=1200&auto=format&fit=crop", name: "Ocean Minimal", desc: "Спокойствие океана и минимализм форм" },
+  { img: "https://images.unsplash.com/photo-1622372738946-62e02505feb3?q=80&w=1200&auto=format&fit=crop", name: "Dark Spa", desc: "Глубокие оттенки и расслабляющая атмосфера" },
+  { img: "https://images.unsplash.com/photo-1683339888007-426ea270374f?q=80&w=1200&auto=format&fit=crop", name: "Japanese Stone", desc: "Природная гармония и чистота линий" },
+  { img: "https://images.unsplash.com/photo-1698870157085-11632d2ddef8?q=80&w=1200&auto=format&fit=crop", name: "Warm Concrete", desc: "Тёплый бетон и уют в деталях" },
+  { img: "https://images.unsplash.com/photo-1640357960494-9242650846d3?q=80&w=1200&auto=format&fit=crop", name: "Silent Luxury", desc: "Роскошь в тишине и совершенстве" },
+];
+
+export default function LandingContent({ user, collections }: Props) {
   const heroVideoRef = useRef<HTMLVideoElement>(null);
   const [videoLoaded, setVideoLoaded] = useState(false);
 
@@ -347,17 +357,14 @@ export default function LandingContent({ user }: Props) {
             </div>
           </div>
           <div className="rail reveal" data-d="1" id="atmoRail">
-            {[
-              { img: "https://images.unsplash.com/photo-1610659856580-323ec67011f9?q=80&w=1200&auto=format&fit=crop", title: "Ocean Minimal", desc: "Спокойствие океана и минимализм форм" },
-              { img: "https://images.unsplash.com/photo-1622372738946-62e02505feb3?q=80&w=1200&auto=format&fit=crop", title: "Dark Spa", desc: "Глубокие оттенки и расслабляющая атмосфера" },
-              { img: "https://images.unsplash.com/photo-1683339888007-426ea270374f?q=80&w=1200&auto=format&fit=crop", title: "Japanese Stone", desc: "Природная гармония и чистота линий" },
-              { img: "https://images.unsplash.com/photo-1698870157085-11632d2ddef8?q=80&w=1200&auto=format&fit=crop", title: "Warm Concrete", desc: "Тёплый бетон и уют в деталях" },
-              { img: "https://images.unsplash.com/photo-1640357960494-9242650846d3?q=80&w=1200&auto=format&fit=crop", title: "Silent Luxury", desc: "Роскошь в тишине и совершенстве" },
-            ].map((a) => (
-              <article key={a.title} className="atmo-card">
-                <img src={a.img} alt={a.title} />
-                <div className="atmo-meta"><h3>{a.title}</h3><p>{a.desc}</p><div className="ln" /></div>
-              </article>
+            {(collections.length > 0
+              ? collections.map((c) => ({ img: c.img, name: c.name, desc: c.desc, href: `/collections/${c.slug}` }))
+              : ATMO_FALLBACK.map((a) => ({ ...a, href: "/collections" }))
+            ).map((a) => (
+              <Link key={a.name} href={a.href} className="atmo-card">
+                <img src={a.img || "/placeholder-tile.svg"} alt={a.name} />
+                <div className="atmo-meta"><h3>{a.name}</h3><p>{a.desc}</p><div className="ln" /></div>
+              </Link>
             ))}
           </div>
         </div>
@@ -640,7 +647,7 @@ const landingStyles = `
   .brand-visual>img{width:100%;height:100%;object-fit:cover;filter:brightness(.7) grayscale(.2)}
   .brand-visual::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,10,15,.9),transparent 60%)}
   .brand-sign{position:absolute;top:46px;left:0;right:0;text-align:center;z-index:2}
-  .brand-sign b{font-weight:300;font-size:clamp(26px,3vw,40px);letter-spacing:.2em;display:block;color:rgba(255,255,255,.92)}
+  .brand-sign b{font-family:var(--font-krona);font-weight:400;font-size:clamp(24px,2.7vw,38px);letter-spacing:.12em;display:block;color:rgba(255,255,255,.92)}
   .brand-sign span{font-size:9px;letter-spacing:.5em;color:rgba(255,255,255,.5)}
   .showroom-card{position:absolute;left:30px;right:30px;bottom:30px;z-index:3;background:rgba(12,16,24,.82);backdrop-filter:blur(16px);border:1px solid var(--line-2);border-radius:3px;padding:28px 30px}
   .showroom-card .eyebrow{margin-bottom:14px}

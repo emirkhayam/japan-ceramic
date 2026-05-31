@@ -1,332 +1,369 @@
-import type { CSSProperties } from "react";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import CatalogSearch from "@/components/CatalogSearch";
+import CatalogFiltersShell from "@/components/CatalogFiltersShell";
+import { parseTileSize, prettyFormat, glyphStyle, proportionStyle } from "@/lib/tile";
 
-// Реальные размеры плитки из строки вида "227*60*9,5", "600×1200×10mm", "598 x 598".
-// Сохраняем реальную ориентацию: широкая плитка → широкой и низкой, узкая → узкой и высокой.
-function parseTileSize(dimensions: string | null): { w: number; h: number } | null {
-  if (!dimensions) return null;
-  const nums = dimensions.match(/\d+(?:[.,]\d+)?/g)?.map((n) => parseFloat(n.replace(",", ".")));
-  if (!nums || nums.length < 2 || !nums[0] || !nums[1]) return null;
-  return { w: nums[0], h: nums[1] };
+export const dynamic = "force-dynamic";
+
+type SP = { category?: string; q?: string; format?: string; surface?: string; color?: string; sort?: string; view?: string };
+
+// Повторяющийся водяной знак «JAPAN CERAMIC» для белого фона прямоугольных плиток.
+const WATERMARK =
+  "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%27260%27%20height%3D%2786%27%3E%3Ctext%20x%3D%2750%25%27%20y%3D%2750%25%27%20font-family%3D%27Arial%2CHelvetica%2Csans-serif%27%20font-size%3D%2715%27%20font-weight%3D%27600%27%20letter-spacing%3D%273%27%20fill%3D%27%252323204a%27%20fill-opacity%3D%270.08%27%20text-anchor%3D%27middle%27%20dominant-baseline%3D%27middle%27%3EJAPAN%20CERAMIC%3C/text%3E%3C/svg%3E";
+
+const SORTS = [
+  { key: "popular", label: "Популярные" },
+  { key: "new", label: "Новинки" },
+  { key: "size", label: "По размеру" },
+  { key: "name", label: "По названию" },
+];
+
+function plural(n: number) {
+  if (n % 10 === 1 && n % 100 !== 11) return "товар";
+  if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) return "товара";
+  return "товаров";
 }
 
-// "227*60*9,5" → "227 × 60"
-function prettyFormat(dimensions: string): string {
-  const s = parseTileSize(dimensions);
-  if (!s) return dimensions;
-  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace(".", ","));
-  return `${fmt(s.w)} × ${fmt(s.h)}`;
+// Точный оттенок свотча по названию цвета. Возвращает null, если это НЕ цвет
+// (напр. «Металл», «Дерево») или название незнакомо — тогда не выдумываем,
+// а показываем обычный чекбокс.
+function colorHex(name: string): string | null {
+  const n = name.toLowerCase();
+  const map: [string, string][] = [
+    ["бел", "#e9e7e1"], ["крем", "#e6dcc8"], ["слонов", "#ece7da"],
+    ["золот", "#cead78"], ["песоч", "#cbb27d"], ["беж", "#d0bb98"],
+    ["олив", "#6f7144"],
+    ["тёмно-сер", "#43464b"], ["темно-сер", "#43464b"], ["светло-сер", "#c2c4c7"],
+    ["граф", "#3a3d42"], ["антрац", "#2f3236"], ["сер", "#8b8e92"],
+    ["чёрн", "#15171b"], ["черн", "#15171b"],
+    ["терракот", "#9c5b3b"], ["шокол", "#4e3a2a"], ["корич", "#6c4f39"],
+    ["голуб", "#7d93b5"], ["син", "#3a4a72"], ["зел", "#4a6052"],
+  ];
+  for (const [k, v] of map) if (n.includes(k)) return v;
+  return null;
 }
 
-// Нормализация по длинной стороне с СОХРАНЕНИЕМ реальной ориентации плитки
-// (= ориентации фото, иначе object-cover криво режет). Длинная сторона = NORM% ячейки,
-// поэтому у всех плиток одинаковый габарит — никто не больше другого.
-// Блок позиционируется absolute + m-auto (центр); проценты высоты корректно
-// резолвятся для абсолютных элементов даже от aspect-square родителя.
-const NORM = 86;
-function normTileStyle(dimensions: string | null): CSSProperties {
-  const s = parseTileSize(dimensions);
-  if (!s) return { width: `${NORM}%`, height: `${NORM}%` };
-  const longest = Math.max(s.w, s.h);
-  return { width: `${(NORM * s.w) / longest}%`, height: `${(NORM * s.h) / longest}%` };
-}
+const parseList = (v?: string) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : []);
+const toggle = (arr: string[], val: string) => (arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val]);
 
-// Маленький глиф-прямоугольник той же пропорции и ориентации, что плитка (макс. сторона 13px).
-function glyphStyle(dimensions: string | null): CSSProperties {
-  const s = parseTileSize(dimensions);
-  if (!s) return { width: 12, height: 12 };
-  const longest = Math.max(s.w, s.h);
-  return {
-    width: Math.max(3, Math.round((13 * s.w) / longest)),
-    height: Math.max(3, Math.round((13 * s.h) / longest)),
-  };
-}
+export default async function CatalogPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { category, q, format, surface, color, sort = "popular", view = "grid" } = await searchParams;
+  const cats = parseList(category);
+  const fmts = parseList(format);
+  const surfs = parseList(surface);
+  const cols = parseList(color);
 
-export default async function CatalogPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ category?: string; q?: string; format?: string }>;
-}) {
-  const { category, q, format } = await searchParams;
-
-  const allCategories = await prisma.category.findMany({
-    orderBy: { sortOrder: "asc" },
-  });
+  const allCategories = await prisma.category.findMany({ orderBy: { sortOrder: "asc" } });
   const mainCategories = allCategories.filter((c) => !c.parentId);
-  const selectedCategory = category ? allCategories.find((c) => c.slug === category) : null;
-  const activeMain = selectedCategory
-    ? selectedCategory.parentId
-      ? allCategories.find((c) => c.id === selectedCategory.parentId)
-      : selectedCategory
-    : null;
-
-  // When a main category is selected, include its subcategories' products too.
-  const categoryFilter = selectedCategory
-    ? selectedCategory.parentId
-      ? { categoryId: selectedCategory.id }
-      : {
-          categoryId: {
-            in: [
-              selectedCategory.id,
-              ...allCategories.filter((c) => c.parentId === selectedCategory.id).map((c) => c.id),
-            ],
-          },
-        }
-    : {};
-
-  const searchFilter = q
-    ? {
-        OR: [
-          { name: { contains: q, mode: "insensitive" as const } },
-          { collection: { contains: q, mode: "insensitive" as const } },
-          { color: { contains: q, mode: "insensitive" as const } },
-          { surface: { contains: q, mode: "insensitive" as const } },
-          { dimensions: { contains: q, mode: "insensitive" as const } },
-        ],
-      }
-    : {};
-
-  const formatFilter = format ? { dimensions: format } : {};
-
-  // Доступные форматы (для фильтра) — берём из активных товаров.
-  const formatRows = await prisma.product.findMany({
-    where: { isActive: true, dimensions: { not: null } },
-    select: { dimensions: true },
-    distinct: ["dimensions"],
-  });
-  const formats = formatRows
-    .map((r) => r.dimensions!)
-    .filter(Boolean)
-    .sort((a, b) => (parseTileSize(a)?.w ?? 0) - (parseTileSize(b)?.w ?? 0));
 
   const productsRaw = await prisma.product.findMany({
-    where: {
-      isActive: true,
-      ...categoryFilter,
-      ...searchFilter,
-      ...formatFilter,
-    },
-    include: {
-      images: { orderBy: { sortOrder: "asc" }, take: 1 },
-      category: true,
-    },
-    orderBy: { name: "asc" },
+    where: { isActive: true },
+    include: { images: { orderBy: { sortOrder: "asc" }, take: 2 }, category: true },
   });
 
-  // Группируем по размеру: одинаковые форматы стоят рядом (крупные форматы выше).
-  // Внутри группы — бейджи (хит/новинка) выше, затем по имени.
-  const fmtKey = (d: string | null) => {
-    const s = parseTileSize(d);
-    if (!s) return { area: -1, key: "zzzz" };
-    const mn = Math.min(s.w, s.h);
-    const mx = Math.max(s.w, s.h);
-    return { area: s.w * s.h, key: `${mn}x${mx}` };
+  // Поиск — базовый набор для счётчиков.
+  const ql = q?.trim().toLowerCase();
+  const base = ql
+    ? productsRaw.filter((p) => [p.name, p.collection, p.color, p.surface, p.dimensions].some((v) => v?.toLowerCase().includes(ql)))
+    : productsRaw;
+
+  // Счётчики.
+  const catCount = (cat: typeof allCategories[number]) => {
+    const ids = cat.parentId ? [cat.id] : [cat.id, ...allCategories.filter((c) => c.parentId === cat.id).map((c) => c.id)];
+    return base.filter((p) => ids.includes(p.categoryId)).length;
   };
-  const products = [...productsRaw].sort((a, b) => {
-    const fa = fmtKey(a.dimensions);
-    const fb = fmtKey(b.dimensions);
-    if (fa.area !== fb.area) return fb.area - fa.area; // крупные форматы первыми
-    if (fa.key !== fb.key) return fa.key.localeCompare(fb.key);
+  const countBy = (sel: (p: typeof base[number]) => string | null | undefined) => {
+    const m = new Map<string, number>();
+    for (const p of base) { const v = sel(p); if (v && v.trim()) m.set(v, (m.get(v) || 0) + 1); }
+    return m;
+  };
+  const formatMap = countBy((p) => p.dimensions);
+  const surfaceMap = countBy((p) => p.surface);
+  const formats = [...formatMap.keys()].sort((a, b) => (parseTileSize(a)?.w ?? 0) - (parseTileSize(b)?.w ?? 0));
+  const surfaces = [...surfaceMap.keys()].sort((a, b) => a.localeCompare(b));
+  // Цвета — объединяем дубли без учёта регистра. key = lowercase (в URL), label = с заглавной.
+  const colorGroups = new Map<string, { label: string; count: number }>();
+  for (const p of base) {
+    const raw = p.color?.trim();
+    if (!raw) continue;
+    const key = raw.toLowerCase();
+    const g = colorGroups.get(key);
+    if (g) g.count += 1;
+    else colorGroups.set(key, { label: raw.charAt(0).toUpperCase() + raw.slice(1), count: 1 });
+  }
+  const colors = [...colorGroups.entries()].map(([key, g]) => ({ key, label: g.label, count: g.count })).sort((a, b) => a.label.localeCompare(b.label));
+
+  // Выбранные категории → множество допустимых categoryId (с подкатегориями).
+  const allowedCatIds = cats.length
+    ? new Set(
+        cats.flatMap((slug) => {
+          const c = allCategories.find((x) => x.slug === slug);
+          if (!c) return [];
+          return c.parentId ? [c.id] : [c.id, ...allCategories.filter((s) => s.parentId === c.id).map((s) => s.id)];
+        })
+      )
+    : null;
+
+  let products = base.filter(
+    (p) =>
+      (!allowedCatIds || allowedCatIds.has(p.categoryId)) &&
+      (!fmts.length || (p.dimensions ? fmts.includes(p.dimensions) : false)) &&
+      (!surfs.length || (p.surface ? surfs.includes(p.surface) : false)) &&
+      (!cols.length || (p.color ? cols.includes(p.color.trim().toLowerCase()) : false))
+  );
+
+  const area = (d: string | null) => { const s = parseTileSize(d); return s ? s.w * s.h : -1; };
+  products = [...products].sort((a, b) => {
+    if (sort === "name") return a.name.localeCompare(b.name);
+    if (sort === "new") { if (a.isNew !== b.isNew) return Number(b.isNew) - Number(a.isNew); return b.createdAt.getTime() - a.createdAt.getTime(); }
+    if (sort === "size") return area(b.dimensions) - area(a.dimensions);
     if (a.isPopular !== b.isPopular) return Number(b.isPopular) - Number(a.isPopular);
     if (a.isNew !== b.isNew) return Number(b.isNew) - Number(a.isNew);
     return a.name.localeCompare(b.name);
   });
 
-  // Построение ссылок с сохранением остальных фильтров.
-  const hrefWith = (ov: { category?: string; q?: string; format?: string }) => {
-    const merged = { category, q, format, ...ov };
+  // URL c полным набором параметров.
+  const build = (m: SP) => {
     const sp = new URLSearchParams();
-    if (merged.category) sp.set("category", merged.category);
-    if (merged.q) sp.set("q", merged.q);
-    if (merged.format) sp.set("format", merged.format);
+    for (const [k, v] of Object.entries(m)) if (v && !(k === "sort" && v === "popular") && !(k === "view" && v === "grid")) sp.set(k, v);
     const s = sp.toString();
     return `/catalog${s ? `?${s}` : ""}`;
   };
+  const current: SP = { category: cats.join(","), q, format: fmts.join(","), surface: surfs.join(","), color: cols.join(","), sort, view };
+  // Ссылка-переключатель значения в группе (мультивыбор).
+  const tgl = (group: "category" | "format" | "surface" | "color", val: string, arr: string[]) =>
+    build({ ...current, [group]: toggle(arr, val).join(",") || undefined });
 
-  const filterLink = (active: boolean) =>
-    `block py-1.5 text-[13.5px] transition-colors ${
-      active ? "text-[var(--ink)] font-medium" : "text-[var(--ink-mute)] hover:text-[var(--ink)]"
-    }`;
+  const hasFilters = !!(cats.length || fmts.length || surfs.length || cols.length);
+  const activeCount = cats.length + fmts.length + surfs.length + cols.length;
 
-  const hasFilters = !!(category || format || q);
+  const groupHead = "text-[11px] font-semibold tracking-[.2em] uppercase text-[var(--ink-mute)] mb-3 pb-2 border-b border-[var(--line)]";
 
-  return (
-    <section className="py-20">
-      <div className="max-w-[1320px] mx-auto px-10">
-        {/* Header */}
-        <div className="mb-10">
-          <div className="flex items-center gap-3.5 text-[11px] font-semibold tracking-[.34em] uppercase text-[var(--ink-mute)] mb-5">
-            <span className="w-[34px] h-px bg-[var(--line-2)]" />
-            Каталог
-          </div>
-          <h2 className="text-[clamp(34px,4.3vw,58px)] font-extralight leading-tight">
-            Коллекции<br />керамогранита
-          </h2>
-        </div>
+  function Check({ on }: { on: boolean }) {
+    return (
+      <span className={`w-[17px] h-[17px] shrink-0 rounded-[4px] border flex items-center justify-center transition-colors ${on ? "bg-[var(--color-gold-500)] border-[var(--color-gold-500)]" : "border-[var(--line-2)] group-hover/opt:border-[var(--ink-faint)]"}`}>
+        {on && <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.3 2.3L9.5 3.5" stroke="#0a0d12" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+      </span>
+    );
+  }
+  const optRow = "group/opt flex items-center gap-2.5 py-1.5 cursor-pointer text-[13.5px]";
+  const optText = (on: boolean) => `flex-1 transition-colors ${on ? "text-[var(--ink)]" : "text-[var(--ink-soft)] group-hover/opt:text-[var(--ink)]"}`;
+  const cnt = (n: number) => <span className="text-[11px] text-[var(--ink-faint)] tabular-nums">{n}</span>;
 
-        {/* Search */}
-        <CatalogSearch initialQuery={q || ""} category={category || ""} />
-
-        <div className="flex flex-col lg:flex-row gap-10 mt-10">
-          {/* ===== Filter sidebar ===== */}
-          <aside className="lg:w-[220px] shrink-0">
-            <div className="lg:sticky lg:top-24 space-y-8">
-              {/* Тип */}
-              <div>
-                <h3 className="text-[11px] font-semibold tracking-[.2em] uppercase text-[var(--ink-mute)] mb-3 pb-2 border-b border-[var(--line)]">
-                  Тип
-                </h3>
-                <Link href={hrefWith({ category: undefined })} className={filterLink(!category)}>
-                  Все типы
-                </Link>
-                {mainCategories.map((cat) => {
-                  const isActive = activeMain?.id === cat.id;
-                  const subs = allCategories.filter((c) => c.parentId === cat.id);
-                  return (
-                    <div key={cat.id}>
-                      <Link href={hrefWith({ category: cat.slug })} className={filterLink(selectedCategory?.id === cat.id)}>
-                        {cat.name}
+  const filtersContent = (
+    <div className="space-y-7">
+      {/* Тип */}
+      <div>
+        <h3 className={groupHead}>Тип</h3>
+        {mainCategories.map((c) => {
+          const subs = allCategories.filter((s) => s.parentId === c.id);
+          const on = cats.includes(c.slug);
+          return (
+            <div key={c.id}>
+              <Link href={tgl("category", c.slug, cats)} className={optRow}>
+                <Check on={on} /><span className={optText(on)}>{c.name}</span>{cnt(catCount(c))}
+              </Link>
+              {subs.length > 0 && (
+                <div className="pl-3.5 border-l border-[var(--line)] ml-1">
+                  {subs.map((s) => {
+                    const son = cats.includes(s.slug);
+                    return (
+                      <Link key={s.id} href={tgl("category", s.slug, cats)} className={optRow}>
+                        <Check on={son} /><span className={optText(son)}>{s.name}</span>{cnt(catCount(s))}
                       </Link>
-                      {isActive && subs.length > 0 && (
-                        <div className="pl-3.5 border-l border-[var(--line)] ml-0.5 mb-1">
-                          {subs.map((sub) => (
-                            <Link
-                              key={sub.id}
-                              href={hrefWith({ category: sub.slug })}
-                              className={filterLink(selectedCategory?.id === sub.id)}
-                            >
-                              {sub.name}
-                            </Link>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Формат */}
-              {formats.length > 0 && (
-                <div>
-                  <h3 className="text-[11px] font-semibold tracking-[.2em] uppercase text-[var(--ink-mute)] mb-3 pb-2 border-b border-[var(--line)]">
-                    Формат
-                  </h3>
-                  <Link href={hrefWith({ format: undefined })} className={filterLink(!format)}>
-                    Все форматы
-                  </Link>
-                  {formats.map((f) => (
-                    <Link key={f} href={hrefWith({ format: f })} className={`${filterLink(format === f)} tabular-nums`}>
-                      {prettyFormat(f)} <span className="text-[var(--ink-faint)]">мм</span>
-                    </Link>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
-
-              {hasFilters && (
-                <Link
-                  href="/catalog"
-                  className="inline-block text-[12px] text-[var(--ink-mute)] hover:text-[var(--ink)] underline underline-offset-4 transition-colors"
-                >
-                  Сбросить фильтры
-                </Link>
-              )}
             </div>
-          </aside>
+          );
+        })}
+      </div>
 
-          {/* ===== Product grid ===== */}
-          <div className="flex-1">
-            <div className="text-[12.5px] text-[var(--ink-mute)] mb-6">
-              {products.length} {products.length === 1 ? "товар" : products.length >= 2 && products.length <= 4 ? "товара" : "товаров"}
+      {/* Формат */}
+      {formats.length > 0 && (
+        <div>
+          <h3 className={groupHead}>Формат</h3>
+          {formats.map((f) => {
+            const on = fmts.includes(f);
+            return (
+              <Link key={f} href={tgl("format", f, fmts)} className={optRow}>
+                <Check on={on} /><span className={`${optText(on)} tabular-nums`}>{prettyFormat(f)} <span className="text-[var(--ink-faint)]">мм</span></span>{cnt(formatMap.get(f) || 0)}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Поверхность */}
+      {surfaces.length > 0 && (
+        <div>
+          <h3 className={groupHead}>Поверхность</h3>
+          {surfaces.map((s) => {
+            const on = surfs.includes(s);
+            return (
+              <Link key={s} href={tgl("surface", s, surfs)} className={optRow}>
+                <Check on={on} /><span className={optText(on)}>{s}</span>{cnt(surfaceMap.get(s) || 0)}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Цвет — со свотчами */}
+      {colors.length > 0 && (
+        <div>
+          <h3 className={groupHead}>Цвет</h3>
+          {colors.map((c) => {
+            const on = cols.includes(c.key);
+            const hex = colorHex(c.label);
+            return (
+              <Link key={c.key} href={tgl("color", c.key, cols)} className={optRow}>
+                {hex ? (
+                  <span
+                    className={`w-[17px] h-[17px] shrink-0 rounded-[4px] border transition-all ${on ? "ring-2 ring-[var(--color-gold-500)] ring-offset-1 ring-offset-[var(--bg-2)] border-transparent" : "border-[var(--line-2)] group-hover/opt:border-[var(--ink-faint)]"}`}
+                    style={{ background: hex }}
+                  />
+                ) : (
+                  <Check on={on} />
+                )}
+                <span className={optText(on)}>{c.label}</span>{cnt(c.count)}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {hasFilters && (
+        <Link href={build({ q, sort, view })} className="inline-flex items-center gap-2 text-[12px] text-[var(--ink-mute)] hover:text-[var(--ink)] transition-colors">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 3l8 8M11 3l-8 8" /></svg>
+          Сбросить фильтры ({activeCount})
+        </Link>
+      )}
+    </div>
+  );
+
+  const isList = view === "list";
+
+  return (
+    <section className="pt-[110px] pb-20">
+      <div className="max-w-[1340px] mx-auto px-6 sm:px-10">
+        {/* Компактная шапка */}
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 mb-7">
+          <div>
+            <div className="flex items-center gap-3 text-[10px] font-semibold tracking-[.34em] uppercase text-[var(--ink-mute)] mb-3">
+              <span className="w-[28px] h-px bg-[var(--line-2)]" />Каталог
+            </div>
+            <h1 className="text-[clamp(26px,3vw,40px)] font-extralight leading-tight" style={{ fontFamily: "var(--font-display)" }}>Коллекции керамогранита</h1>
+            <p className="text-[var(--ink-mute)] text-[13.5px] mt-1.5">Премиальные коллекции из Японии · <span className="text-[var(--ink-soft)]">{base.length} {plural(base.length)}</span></p>
+          </div>
+          <div className="lg:w-[360px]"><CatalogSearch initialQuery={q || ""} category={cats[0] || ""} /></div>
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-9">
+          <CatalogFiltersShell activeCount={activeCount}>{filtersContent}</CatalogFiltersShell>
+
+          <div className="flex-1 min-w-0">
+            {/* Сортировка + вид */}
+            <div className="flex items-center justify-between gap-4 mb-6 pb-4 border-b border-[var(--line)]">
+              <div className="flex flex-wrap items-center gap-1">
+                {SORTS.map((s) => (
+                  <Link key={s.key} href={build({ ...current, sort: s.key })} className={`px-3 py-1.5 rounded-sm text-[12.5px] transition-colors ${sort === s.key ? "bg-[rgba(255,255,255,.06)] text-[var(--ink)]" : "text-[var(--ink-mute)] hover:text-[var(--ink)]"}`}>{s.label}</Link>
+                ))}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Link href={build({ ...current, view: "grid" })} aria-label="Сетка" className={`w-8 h-8 flex items-center justify-center rounded-sm transition-colors ${!isList ? "bg-[rgba(255,255,255,.06)] text-[var(--ink)]" : "text-[var(--ink-mute)] hover:text-[var(--ink)]"}`}>
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1" /><rect x="9" y="1" width="6" height="6" rx="1" /><rect x="1" y="9" width="6" height="6" rx="1" /><rect x="9" y="9" width="6" height="6" rx="1" /></svg>
+                </Link>
+                <Link href={build({ ...current, view: "list" })} aria-label="Список" className={`w-8 h-8 flex items-center justify-center rounded-sm transition-colors ${isList ? "bg-[rgba(255,255,255,.06)] text-[var(--ink)]" : "text-[var(--ink-mute)] hover:text-[var(--ink)]"}`}>
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M2 4h12M2 8h12M2 12h12" /></svg>
+                </Link>
+              </div>
             </div>
 
             {products.length > 0 ? (
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-10">
-                {products.map((product) => {
+              <div className={isList ? "flex flex-col gap-4" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"}>
+                {products.map((p) => {
+                  const main = p.images[0]?.imageUrl || "/placeholder-tile.svg";
+                  const sz = parseTileSize(p.dimensions);
+                  const isRect = sz ? Math.max(sz.w, sz.h) / Math.min(sz.w, sz.h) >= 1.25 : false;
                   const badges = [
-                    product.isPopular && { label: "Хит", cls: "bg-[rgba(0,0,0,.6)] text-white border border-white/15 backdrop-blur-sm" },
-                    product.isNew && { label: "Новинка", cls: "bg-[var(--color-gold-500)] text-[#0a0d12]" },
-                    product.isOnSale && { label: "Акция", cls: "bg-[#c0392b] text-white" },
-                  ].filter(Boolean) as { label: string; cls: string }[];
-
-                  // Компактный ряд характеристик под картинкой (как у Tubadzin)
-                  const chips: { text?: string; icon?: "frost" }[] = [
-                    product.surface ? { text: product.surface } : null,
-                    product.frostResistant ? { icon: "frost" } : null,
-                    product.wearResistance ? { text: `PEI ${product.wearResistance}` } : null,
-                    product.antiSlip ? { text: product.antiSlip } : null,
-                  ].filter(Boolean) as { text?: string; icon?: "frost" }[];
+                    p.isNew && { t: "NEW", cls: "bg-[var(--color-gold-500)] text-[#0a0d12]" },
+                    p.isPopular && { t: "TOP", cls: "bg-[rgba(8,10,15,.7)] text-white border border-white/20 backdrop-blur-sm" },
+                    p.isOnSale && { t: "АКЦИЯ", cls: "bg-[#c0392b] text-white" },
+                  ].filter(Boolean) as { t: string; cls: string }[];
 
                   return (
-                    <Link key={product.id} href={`/catalog/${product.slug}`} className="group block">
-                      {/* Картинка — все плитки приведены к одной высоте */}
-                      <div className="relative aspect-square overflow-hidden rounded-md bg-[rgba(255,255,255,.025)] flex items-center justify-center">
+                    <Link
+                      key={p.id}
+                      href={`/catalog/${p.slug}`}
+                      className={`group relative rounded-xl overflow-hidden border border-white/[.08] bg-gradient-to-b from-[var(--bg-3)] to-[var(--bg-2)] transition-all duration-300 will-change-transform hover:-translate-y-1.5 hover:border-[rgba(206,173,120,.45)] hover:shadow-[0_24px_55px_-24px_rgba(0,0,0,.85)] ${isList ? "flex" : ""}`}
+                    >
+                      <div
+                        className={`relative overflow-hidden aspect-square ${isRect ? "bg-white" : ""} ${isList ? "w-[200px] shrink-0" : ""}`}
+                        style={isRect ? { backgroundImage: `url("${WATERMARK}")`, backgroundSize: "175px auto" } : undefined}
+                      >
+                        {isRect ? (
+                          /* Прямоугольная плитка — целиком на белом фоне с водяным знаком, в обводке. */
+                          <div className="absolute inset-0 flex items-center justify-center p-4">
+                            <div
+                              className="relative overflow-hidden rounded-[3px] border-2 border-black/[.18] shadow-[0_16px_42px_rgba(0,0,0,.26)] transition-transform duration-[600ms] ease-[var(--ease)] group-hover:scale-[1.04]"
+                              style={sz && sz.w >= sz.h ? { width: "84%", aspectRatio: `${sz.w}/${sz.h}` } : sz ? { height: "84%", aspectRatio: `${sz.w}/${sz.h}` } : { width: "84%", aspectRatio: "1/1" }}
+                            >
+                              <img src={main} alt={p.name} loading="lazy" className="w-full h-full object-cover scale-[1.32]" />
+                            </div>
+                          </div>
+                        ) : (
+                          /* Квадратная — крупный план текстуры с зумом, в тонкой обводке. */
+                          <>
+                            <div className="absolute inset-0 shimmer" />
+                            <img src={main} alt={p.name} loading="lazy" className="relative w-full h-full object-cover scale-[1.32] transition-transform duration-[600ms] ease-[var(--ease)] group-hover:scale-[1.4]" />
+                            <div className="absolute inset-0 border border-white/10 pointer-events-none" />
+                          </>
+                        )}
+
                         {badges.length > 0 && (
                           <div className="absolute top-2.5 left-2.5 z-10 flex flex-col items-start gap-1.5">
-                            {badges.map((b) => (
-                              <span
-                                key={b.label}
-                                className={`px-2 py-1 rounded-sm text-[10px] font-semibold tracking-[.1em] uppercase ${b.cls}`}
-                              >
-                                {b.label}
-                              </span>
-                            ))}
+                            {badges.map((b) => <span key={b.t} className={`px-2 py-0.5 rounded-sm text-[9.5px] font-semibold tracking-[.12em] ${b.cls}`}>{b.t}</span>)}
                           </div>
                         )}
-                        <div className="absolute inset-0 m-auto overflow-hidden rounded-sm" style={normTileStyle(product.dimensions)}>
-                          <img
-                            src={product.images[0]?.imageUrl || "/placeholder-tile.svg"}
-                            alt={product.name}
-                            className="w-full h-full object-cover transition-transform duration-[1.1s] ease-[var(--ease)] group-hover:scale-[1.05]"
-                            loading="lazy"
-                          />
-                        </div>
+
+                        {/* Мини-превью формата — только для квадратных (у прямоугольных формат и так виден целиком). */}
+                        {!isRect && (
+                          <div
+                            className="absolute bottom-3 left-3 z-10 rounded-[4px] overflow-hidden border border-white/40 shadow-[0_5px_18px_rgba(0,0,0,.7)] bg-[var(--bg-2)]"
+                            style={proportionStyle(p.dimensions, 90)}
+                            title={p.dimensions ? `${prettyFormat(p.dimensions)} мм` : undefined}
+                          >
+                            <img src={main} alt="" loading="lazy" className="w-full h-full object-cover scale-[1.5]" />
+                          </div>
+                        )}
                       </div>
-
-                      {/* Спец-иконки */}
-                      {chips.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 mt-3">
-                          {chips.map((c, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[3px] border border-[var(--line)] text-[10px] text-[var(--ink-mute)]"
-                            >
-                              {c.icon === "frost" ? (
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                                  <path d="M12 2v20M4 6l16 12M20 6L4 18" />
-                                </svg>
-                              ) : (
-                                c.text
-                              )}
+                      <div className={`p-4 ${isList ? "flex-1 flex flex-col justify-center" : ""}`}>
+                        <div className="text-[10px] tracking-[.18em] uppercase text-[var(--ink-faint)] mb-1">{p.collection || p.category.name}</div>
+                        <h3 className="text-[15px] font-medium leading-snug text-[var(--ink)] group-hover:text-white transition-colors line-clamp-2">{p.name}</h3>
+                        <div className="flex items-center gap-2.5 text-[12px] text-[var(--ink-mute)] mt-2 tabular-nums">
+                          {p.surface && <span>{p.surface}</span>}
+                          {p.surface && p.dimensions && <span className="text-[var(--ink-faint)]">·</span>}
+                          {p.dimensions && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="inline-block border border-[var(--ink-mute)] rounded-[1px]" style={glyphStyle(p.dimensions)} />
+                              {prettyFormat(p.dimensions)} мм
                             </span>
-                          ))}
+                          )}
                         </div>
-                      )}
-
-                      {/* Текст под картинкой */}
-                      <div className="mt-2">
-                        <div className="text-[10px] tracking-[.18em] uppercase text-[var(--ink-faint)] mb-1">
-                          {product.collection || product.category.name}
-                        </div>
-                        <h3 className="text-[15px] font-medium leading-snug text-[var(--ink)] group-hover:text-white transition-colors">
-                          {product.name}
-                        </h3>
-                        {product.dimensions && (
-                          <div className="flex items-center gap-2 text-[12px] text-[var(--ink-mute)] mt-1.5 tabular-nums">
-                            <span className="inline-block border border-[var(--ink-mute)] rounded-[1px]" style={glyphStyle(product.dimensions)} />
-                            {prettyFormat(product.dimensions)} мм
-                          </div>
-                        )}
+                        <span className="mt-3 inline-flex items-center gap-1.5 text-[12px] text-[var(--ink-soft)] group-hover:text-[var(--color-gold-400)] transition-colors">
+                          Подробнее
+                          <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M1 7h11M7.5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
+                        </span>
                       </div>
                     </Link>
                   );
                 })}
               </div>
             ) : (
-              <div className="text-center py-24 text-[var(--ink-mute)] text-base">
-                {q ? `По запросу «${q}» ничего не найдено` : "Товары не найдены"}
-              </div>
+              <div className="text-center py-24 text-[var(--ink-mute)] text-base">{q ? `По запросу «${q}» ничего не найдено` : "Товары не найдены"}</div>
             )}
           </div>
         </div>

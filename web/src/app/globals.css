@@ -28,6 +28,11 @@
   --accent: #c8d2e0;
   --glow: rgba(120,150,200,.16);
   --ease: cubic-bezier(.22,.61,.36,1);
+  /* Фирменный шрифт заголовков: латиница — Krona One, кириллица — Prosto One */
+  --font-display: var(--font-krona), var(--font-prosto), var(--font-sans), 'Inter', sans-serif;
+  /* Бренд-цвета из логотипа */
+  --brand-navy: #23204a;
+  --brand-gold: #cead78;
 }
 
 * { box-sizing: border-box; }
@@ -63,9 +68,18 @@ img { display: block; max-width: 100%; }
 }
 
 h1, h2, h3 {
-  font-weight: 300;
   letter-spacing: -.015em;
   line-height: 1.12;
+}
+h3 { font-weight: 300; }
+
+/* Крупные заголовки — фирменным шрифтом из брендбука (Krona One / Prosto One).
+   Шрифт одноначертательный (400) и широкий, поэтому отрицательный трекинг убран. */
+h1, h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.16;
 }
 
 /* ===== Component classes used across the app ===== */

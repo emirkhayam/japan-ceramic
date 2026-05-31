@@ -3,22 +3,21 @@ import { getSession } from "@/lib/auth";
 import MobileMenu from "./MobileMenu";
 import HeaderShell from "./HeaderShell";
 import HeaderDropdown from "./HeaderDropdown";
+import BrandLogo from "./BrandLogo";
 
 export default async function Header({ transparent }: { transparent?: boolean }) {
   const user = await getSession();
 
   return (
     <HeaderShell transparent={transparent}>
-      <Link href="/" className="flex flex-col leading-[.92]">
-        <b className="font-light text-xl tracking-[.26em]">JAPAN</b>
-        <span className="font-semibold text-[8.5px] tracking-[.46em] text-[var(--ink-mute)] pl-[2px]">
-          CERAMIC
-        </span>
+      <Link href="/" aria-label="Japan Ceramic — на главную">
+        <BrandLogo height={28} wordSize={15} />
       </Link>
 
       <nav className="hidden md:flex gap-[38px]">
         {[
           { label: "Каталог", href: "/catalog" },
+          { label: "Коллекции", href: "/collections" },
           { label: "AI-визуализация", href: "/visualize" },
           { label: "О компании", href: "/about" },
           { label: "Контакты", href: "/#contacts" },

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Playfair_Display } from "next/font/google";
+import { Inter, Playfair_Display, Krona_One, Prosto_One } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -15,6 +15,22 @@ const playfair = Playfair_Display({
   style: ["normal", "italic"],
 });
 
+// Фирменные шрифты из брендбука Japan Ceramic.
+// Krona One — латинское начертание логотипа (без кириллицы),
+// Prosto One — кириллический компаньон. В заголовках используются стеком:
+// латиница берётся из Krona One, кириллица автоматически из Prosto One.
+const krona = Krona_One({
+  subsets: ["latin"],
+  variable: "--font-krona",
+  weight: "400",
+});
+
+const prosto = Prosto_One({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-prosto",
+  weight: "400",
+});
+
 export const metadata: Metadata = {
   title: "Japan Ceramic — премиальный керамогранит",
   description: "Премиальный керамогранит для современной архитектуры",
@@ -27,7 +43,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru">
-      <body className={`${inter.variable} ${playfair.variable} font-[family-name:var(--font-sans)]`}>
+      <body className={`${inter.variable} ${playfair.variable} ${krona.variable} ${prosto.variable} font-[family-name:var(--font-sans)]`}>
         {children}
       </body>
     </html>
