@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import TablePager from "@/components/admin/TablePager";
+
+const PER_PAGE = 20;
 
 type Product = {
   id: string;
@@ -39,6 +42,13 @@ export default function ProductsTable({ products, categories }: ProductsTablePro
       return true;
     });
   }, [products, search, categoryFilter, statusFilter]);
+
+  // Клиентская пагинация. Сброс на 1-ю страницу при смене фильтров.
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [search, categoryFilter, statusFilter]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const pageNum = Math.min(page, pageCount);
+  const pageItems = filtered.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
 
   const allSelected = filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id));
 
@@ -176,7 +186,7 @@ export default function ProductsTable({ products, categories }: ProductsTablePro
             </tr>
           </thead>
           <tbody>
-            {filtered.map((product) => (
+            {pageItems.map((product) => (
               <tr
                 key={product.id}
                 className="border-b border-[var(--line)] hover:bg-[rgba(255,255,255,.02)] transition-colors duration-200"
@@ -239,6 +249,13 @@ export default function ProductsTable({ products, categories }: ProductsTablePro
           </tbody>
         </table>
       </div>
+
+      <TablePager page={pageNum} pageCount={pageCount} onPage={setPage} />
+      {filtered.length > PER_PAGE && (
+        <p className="mt-3 text-center text-[12px] text-[var(--ink-faint)] tabular-nums">
+          {(pageNum - 1) * PER_PAGE + 1}–{Math.min(pageNum * PER_PAGE, filtered.length)} из {filtered.length}
+        </p>
+      )}
     </div>
   );
 }

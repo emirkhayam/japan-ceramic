@@ -49,6 +49,7 @@ export default function BrandLogo({
   wordSize,
   wordColor = "currentColor",
   gap = 12,
+  stacked = false,
   className,
   style,
 }: {
@@ -58,13 +59,20 @@ export default function BrandLogo({
   wordSize?: number;
   wordColor?: string;
   gap?: number;
+  stacked?: boolean; // надпись «JAPAN CERAMIC» под знаком, а не сбоку
   className?: string;
   style?: CSSProperties;
 }) {
   return (
     <span
       className={className}
-      style={{ display: "inline-flex", alignItems: "center", gap, ...style }}
+      style={{
+        display: "inline-flex",
+        flexDirection: stacked ? "column" : "row",
+        alignItems: "center",
+        gap: stacked ? gap * 0.5 : gap,
+        ...style,
+      }}
     >
       <LogoMark height={height} color={markColor} />
       {wordmark && (

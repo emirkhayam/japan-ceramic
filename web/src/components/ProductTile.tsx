@@ -21,8 +21,8 @@ export interface TileProduct {
 export default function ProductTile({ product, eyebrow }: { product: TileProduct; eyebrow?: string }) {
   const badges = [
     product.isPopular && { label: "Хит", cls: "bg-[rgba(0,0,0,.6)] text-white border border-white/15 backdrop-blur-sm" },
-    product.isNew && { label: "Новинка", cls: "bg-[var(--color-gold-500)] text-[#0a0d12]" },
-    product.isOnSale && { label: "Акция", cls: "bg-[#c0392b] text-white" },
+    product.isNew && { label: "Новинка", cls: "bg-[var(--color-gold-500)] text-[var(--on-gold)]" },
+    product.isOnSale && { label: "Акция", cls: "bg-[var(--danger)] text-white" },
   ].filter(Boolean) as { label: string; cls: string }[];
 
   const chips: { text?: string; icon?: "frost" }[] = [

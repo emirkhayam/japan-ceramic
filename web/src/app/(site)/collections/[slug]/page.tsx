@@ -113,7 +113,7 @@ export default async function CollectionDetailPage({ params }: { params: Promise
 
             {closeup && (
               <div className="relative aspect-[4/5] rounded-lg overflow-hidden border border-[var(--line)] hidden lg:block">
-                <img src={closeup} alt="" className="w-full h-full object-cover" />
+                <img src={closeup} alt={`${collection.name} — фрагмент коллекции`} className="w-full h-full object-cover" />
               </div>
             )}
           </div>

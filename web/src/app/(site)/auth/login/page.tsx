@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -50,36 +52,20 @@ export default function LoginPage() {
 
       <form onSubmit={handleSubmit}>
         <div className="mb-5">
-          <label className="block text-xs font-medium tracking-[.08em] uppercase text-[var(--ink-mute)] mb-2">
+          <label htmlFor="login-email" className="block text-xs font-medium tracking-[.08em] uppercase text-[var(--ink-mute)] mb-2">
             Email
           </label>
-          <input
-            type="email"
-            name="email"
-            required
-            placeholder="your@email.com"
-            className="w-full px-[18px] py-3.5 bg-[rgba(255,255,255,.04)] border border-[var(--line-2)] rounded-sm text-[var(--ink)] text-sm outline-none focus:border-[rgba(255,255,255,.34)] focus:bg-[rgba(255,255,255,.07)] transition-all placeholder:text-[var(--ink-faint)]"
-          />
+          <Input id="login-email" type="email" name="email" required autoComplete="email" placeholder="your@email.com" />
         </div>
         <div className="mb-5">
-          <label className="block text-xs font-medium tracking-[.08em] uppercase text-[var(--ink-mute)] mb-2">
+          <label htmlFor="login-password" className="block text-xs font-medium tracking-[.08em] uppercase text-[var(--ink-mute)] mb-2">
             Пароль
           </label>
-          <input
-            type="password"
-            name="password"
-            required
-            placeholder="Ваш пароль"
-            className="w-full px-[18px] py-3.5 bg-[rgba(255,255,255,.04)] border border-[var(--line-2)] rounded-sm text-[var(--ink)] text-sm outline-none focus:border-[rgba(255,255,255,.34)] focus:bg-[rgba(255,255,255,.07)] transition-all placeholder:text-[var(--ink-faint)]"
-          />
+          <Input id="login-password" type="password" name="password" required autoComplete="current-password" placeholder="Ваш пароль" />
         </div>
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-[17px] text-[13.5px] font-medium bg-[var(--ink)] text-[#0a0d12] rounded-sm hover:bg-white transition-all duration-500 disabled:opacity-50"
-        >
+        <Button variant="ink" type="submit" disabled={loading} className="w-full py-[17px] text-[13.5px]">
           {loading ? "Вход..." : "Войти"}
-        </button>
+        </Button>
       </form>
 
       <p className="mt-8 text-[13px] text-[var(--ink-mute)]">

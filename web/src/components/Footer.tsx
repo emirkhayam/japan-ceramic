@@ -1,7 +1,9 @@
 import Link from "next/link";
 import BrandLogo from "./BrandLogo";
+import { getSiteSettings, telHref, waHref, tgHref } from "@/lib/settings";
 
-export default function Footer() {
+export default async function Footer() {
+  const s = await getSiteSettings();
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: footerStyles }} />
@@ -37,27 +39,33 @@ export default function Footer() {
               <h4>Клиентам</h4>
               <a href="/#contacts">Доставка и оплата</a>
               <a href="/#contacts">Заказать образец</a>
-              <a href="https://2gis.kg/bishkek/firm/70000001100637803" target="_blank" rel="noopener">Шоурум на карте</a>
+              {s.mapLink && <a href={s.mapLink} target="_blank" rel="noopener">Шоурум на карте</a>}
             </div>
             <div className="ft-col ft-brand">
               <a href="/" className="ft-logo" aria-label="Japan Ceramic — на главную"><BrandLogo height={34} wordSize={16} /></a>
               <div className="ft-socials">
-                <a href="https://instagram.com/japanceramic" target="_blank" rel="noopener" aria-label="Instagram"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="4" stroke="currentColor" strokeWidth="1.2" /><circle cx="8" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.2" /><circle cx="12" cy="4" r="1" fill="currentColor" /></svg></a>
-                <a href="https://t.me/japanceramic" target="_blank" rel="noopener" aria-label="Telegram"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M14.5 2L1.5 7l3.5 1.4L13 4 6.5 9.7l-.2 3.6L8.4 11l3.1 2.3L14.5 2z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" /></svg></a>
-                <a href="https://pinterest.com/japanceramic" target="_blank" rel="noopener" aria-label="Pinterest"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2" /><path d="M8 4.5C6.3 4.5 5.3 5.8 5.3 7.2c0 .7.3 1.4.9 1.7.1 0 .2 0 .2-.1l.1-.5c0-.1 0-.2-.1-.3-.2-.3-.4-.7-.4-1.2 0-1.2.9-2.3 2.4-2.3 1.3 0 2 .8 2 1.9 0 1.4-.6 2.6-1.5 2.6-.5 0-.9-.4-.7-1l.4-1.5c.1-.4-.1-.7-.4-.7-.4 0-.7.4-.7 1l-1 4.2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" /></svg></a>
+                {s.instagram && (
+                  <a href={s.instagram} target="_blank" rel="noopener" aria-label="Instagram"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="4" stroke="currentColor" strokeWidth="1.2" /><circle cx="8" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.2" /><circle cx="12" cy="4" r="1" fill="currentColor" /></svg></a>
+                )}
+                {s.telegram && (
+                  <a href={tgHref(s.telegram)} target="_blank" rel="noopener" aria-label="Telegram"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M14.5 2L1.5 7l3.5 1.4L13 4 6.5 9.7l-.2 3.6L8.4 11l3.1 2.3L14.5 2z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" /></svg></a>
+                )}
+                {s.whatsapp && (
+                  <a href={waHref(s.whatsapp)} target="_blank" rel="noopener" aria-label="WhatsApp"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1.7a6.3 6.3 0 00-5.4 9.5L1.6 14.4l3.3-1A6.3 6.3 0 108 1.7Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" /><path d="M6 5.5c.6 1.6 1.9 2.9 3.5 3.5l.9-.9 1.5.6c0 1-.9 1.6-1.8 1.5C7.8 11 5 8.2 4.8 5.9c-.1-.9.5-1.8 1.5-1.8l.6 1.4-.9.9-.1.1Z" fill="currentColor" /></svg></a>
+                )}
               </div>
               <div className="ft-contacts">
-                <p>+996 503 33 77 33</p>
-                <p>info@japanceramic.ru</p>
-                <p>г. Бишкек, ул. Юнусалиева, 28</p>
+                {s.phone && <p><a href={telHref(s.phone)}>{s.phone}</a></p>}
+                {s.email && <p><a href={`mailto:${s.email}`}>{s.email}</a></p>}
+                {s.address && <p>{s.address}</p>}
               </div>
             </div>
           </div>
           <div className="ft-bot">
             <span>&copy; 2026 Japan Ceramic. Все права защищены.</span>
             <div className="ft-links">
-              <a href="#">Политика конфиденциальности</a>
-              <a href="#">Пользовательское соглашение</a>
+              <Link href="/privacy">Политика конфиденциальности</Link>
+              <Link href="/terms">Пользовательское соглашение</Link>
             </div>
           </div>
         </div>
@@ -85,6 +93,8 @@ const footerStyles = `
   .ft-socials a{width:40px;height:40px;border:1px solid var(--line-2);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);transition:.4s var(--ease)}
   .ft-socials a:hover{background:var(--ink);color:#0a0d12;border-color:var(--ink)}
   .ft-contacts p{font-size:15px;color:var(--ink-soft);padding:4px 0}
+  .ft-contacts a{color:inherit;display:inline;padding:0;transition:color .3s}
+  .ft-contacts a:hover{color:var(--ink)}
   .ft-bot{display:flex;justify-content:space-between;align-items:center;padding:22px 0;font-size:12.5px;color:var(--ink-faint);flex-wrap:wrap;gap:14px}
   .ft-links{display:flex;gap:32px}
   .ft-links a:hover{color:var(--ink-soft)}

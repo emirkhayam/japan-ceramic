@@ -52,7 +52,8 @@ export default async function ProjectDetailPage({
         {/* Items */}
         <div className="mt-10">
           {project.items.length > 0 ? (
-            <table className="w-full border-collapse">
+            <div className="overflow-x-auto -mx-4 px-4">
+            <table className="w-full border-collapse min-w-[560px]">
               <thead>
                 <tr className="text-left text-[11px] tracking-[.14em] uppercase text-[var(--ink-mute)] font-medium border-b border-[var(--line-2)]">
                   <th className="py-3 w-20"></th>
@@ -69,7 +70,7 @@ export default async function ProjectDetailPage({
                       {item.product.images[0] && (
                         <img
                           src={item.product.images[0].imageUrl}
-                          alt=""
+                          alt={item.product.name}
                           className="w-[60px] h-[60px] rounded-sm object-cover border border-[var(--line)] brightness-[.85]"
                         />
                       )}
@@ -90,6 +91,7 @@ export default async function ProjectDetailPage({
                 ))}
               </tbody>
             </table>
+            </div>
           ) : (
             <div className="text-center py-16 text-[var(--ink-mute)]">
               В проекте пока нет товаров

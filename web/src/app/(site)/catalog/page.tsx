@@ -2,11 +2,15 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import CatalogSearch from "@/components/CatalogSearch";
 import CatalogFiltersShell from "@/components/CatalogFiltersShell";
-import { parseTileSize, prettyFormat, glyphStyle, proportionStyle } from "@/lib/tile";
+import Pagination from "@/components/Pagination";
+import { parseTileSize, prettyFormat, glyphStyle } from "@/lib/tile";
+import FormatMiniPreview from "@/components/FormatMiniPreview";
 
 export const dynamic = "force-dynamic";
 
-type SP = { category?: string; q?: string; format?: string; surface?: string; color?: string; sort?: string; view?: string };
+type SP = { category?: string; q?: string; format?: string; surface?: string; color?: string; sort?: string; view?: string; page?: string };
+
+const PER_PAGE = 24;
 
 // Повторяющийся водяной знак «JAPAN CERAMIC» для белого фона прямоугольных плиток.
 const WATERMARK =
@@ -48,7 +52,7 @@ const parseList = (v?: string) => (v ? v.split(",").map((s) => s.trim()).filter(
 const toggle = (arr: string[], val: string) => (arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val]);
 
 export default async function CatalogPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const { category, q, format, surface, color, sort = "popular", view = "grid" } = await searchParams;
+  const { category, q, format, surface, color, sort = "popular", view = "grid", page } = await searchParams;
   const cats = parseList(category);
   const fmts = parseList(format);
   const surfs = parseList(surface);
@@ -68,11 +72,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
     ? productsRaw.filter((p) => [p.name, p.collection, p.color, p.surface, p.dimensions].some((v) => v?.toLowerCase().includes(ql)))
     : productsRaw;
 
-  // Счётчики.
-  const catCount = (cat: typeof allCategories[number]) => {
-    const ids = cat.parentId ? [cat.id] : [cat.id, ...allCategories.filter((c) => c.parentId === cat.id).map((c) => c.id)];
-    return base.filter((p) => ids.includes(p.categoryId)).length;
-  };
+  // Списки значений для фильтров.
   const countBy = (sel: (p: typeof base[number]) => string | null | undefined) => {
     const m = new Map<string, number>();
     for (const p of base) { const v = sel(p); if (v && v.trim()) m.set(v, (m.get(v) || 0) + 1); }
@@ -123,10 +123,17 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
     return a.name.localeCompare(b.name);
   });
 
+  // Пагинация: режем уже отфильтрованный/отсортированный список.
+  // Смена фильтров/сортировки/вида не несёт page (ссылки строятся из current без page) → сброс на 1-ю.
+  const totalItems = products.length;
+  const pageCount = Math.max(1, Math.ceil(totalItems / PER_PAGE));
+  const pageNum = Math.min(Math.max(1, parseInt(page || "1", 10) || 1), pageCount);
+  const pageItems = products.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
+
   // URL c полным набором параметров.
   const build = (m: SP) => {
     const sp = new URLSearchParams();
-    for (const [k, v] of Object.entries(m)) if (v && !(k === "sort" && v === "popular") && !(k === "view" && v === "grid")) sp.set(k, v);
+    for (const [k, v] of Object.entries(m)) if (v && !(k === "sort" && v === "popular") && !(k === "view" && v === "grid") && !(k === "page" && v === "1")) sp.set(k, v);
     const s = sp.toString();
     return `/catalog${s ? `?${s}` : ""}`;
   };
@@ -134,6 +141,8 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
   // Ссылка-переключатель значения в группе (мультивыбор).
   const tgl = (group: "category" | "format" | "surface" | "color", val: string, arr: string[]) =>
     build({ ...current, [group]: toggle(arr, val).join(",") || undefined });
+
+  const pageHref = (n: number) => build({ ...current, page: n === 1 ? undefined : String(n) });
 
   const hasFilters = !!(cats.length || fmts.length || surfs.length || cols.length);
   const activeCount = cats.length + fmts.length + surfs.length + cols.length;
@@ -149,7 +158,6 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
   }
   const optRow = "group/opt flex items-center gap-2.5 py-1.5 cursor-pointer text-[13.5px]";
   const optText = (on: boolean) => `flex-1 transition-colors ${on ? "text-[var(--ink)]" : "text-[var(--ink-soft)] group-hover/opt:text-[var(--ink)]"}`;
-  const cnt = (n: number) => <span className="text-[11px] text-[var(--ink-faint)] tabular-nums">{n}</span>;
 
   const filtersContent = (
     <div className="space-y-7">
@@ -162,7 +170,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
           return (
             <div key={c.id}>
               <Link href={tgl("category", c.slug, cats)} className={optRow}>
-                <Check on={on} /><span className={optText(on)}>{c.name}</span>{cnt(catCount(c))}
+                <Check on={on} /><span className={optText(on)}>{c.name}</span>
               </Link>
               {subs.length > 0 && (
                 <div className="pl-3.5 border-l border-[var(--line)] ml-1">
@@ -170,7 +178,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                     const son = cats.includes(s.slug);
                     return (
                       <Link key={s.id} href={tgl("category", s.slug, cats)} className={optRow}>
-                        <Check on={son} /><span className={optText(son)}>{s.name}</span>{cnt(catCount(s))}
+                        <Check on={son} /><span className={optText(son)}>{s.name}</span>
                       </Link>
                     );
                   })}
@@ -189,7 +197,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
             const on = fmts.includes(f);
             return (
               <Link key={f} href={tgl("format", f, fmts)} className={optRow}>
-                <Check on={on} /><span className={`${optText(on)} tabular-nums`}>{prettyFormat(f)} <span className="text-[var(--ink-faint)]">мм</span></span>{cnt(formatMap.get(f) || 0)}
+                <Check on={on} /><span className={`${optText(on)} tabular-nums`}>{prettyFormat(f)} <span className="text-[var(--ink-faint)]">мм</span></span>
               </Link>
             );
           })}
@@ -204,7 +212,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
             const on = surfs.includes(s);
             return (
               <Link key={s} href={tgl("surface", s, surfs)} className={optRow}>
-                <Check on={on} /><span className={optText(on)}>{s}</span>{cnt(surfaceMap.get(s) || 0)}
+                <Check on={on} /><span className={optText(on)}>{s}</span>
               </Link>
             );
           })}
@@ -228,7 +236,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                 ) : (
                   <Check on={on} />
                 )}
-                <span className={optText(on)}>{c.label}</span>{cnt(c.count)}
+                <span className={optText(on)}>{c.label}</span>
               </Link>
             );
           })}
@@ -283,15 +291,16 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
             </div>
 
             {products.length > 0 ? (
+              <>
               <div className={isList ? "flex flex-col gap-4" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"}>
-                {products.map((p) => {
+                {pageItems.map((p) => {
                   const main = p.images[0]?.imageUrl || "/placeholder-tile.svg";
                   const sz = parseTileSize(p.dimensions);
                   const isRect = sz ? Math.max(sz.w, sz.h) / Math.min(sz.w, sz.h) >= 1.25 : false;
                   const badges = [
                     p.isNew && { t: "NEW", cls: "bg-[var(--color-gold-500)] text-[#0a0d12]" },
                     p.isPopular && { t: "TOP", cls: "bg-[rgba(8,10,15,.7)] text-white border border-white/20 backdrop-blur-sm" },
-                    p.isOnSale && { t: "АКЦИЯ", cls: "bg-[#c0392b] text-white" },
+                    p.isOnSale && { t: "АКЦИЯ", cls: "bg-[var(--danger)] text-white" },
                   ].filter(Boolean) as { t: string; cls: string }[];
 
                   return (
@@ -329,16 +338,15 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                           </div>
                         )}
 
-                        {/* Мини-превью формата — только для квадратных (у прямоугольных формат и так виден целиком). */}
-                        {!isRect && (
-                          <div
-                            className="absolute bottom-3 left-3 z-10 rounded-[4px] overflow-hidden border border-white/40 shadow-[0_5px_18px_rgba(0,0,0,.7)] bg-[var(--bg-2)]"
-                            style={proportionStyle(p.dimensions, 90)}
-                            title={p.dimensions ? `${prettyFormat(p.dimensions)} мм` : undefined}
-                          >
-                            <img src={main} alt="" loading="lazy" className="w-full h-full object-cover scale-[1.5]" />
-                          </div>
-                        )}
+                        {/* Квадратное мини-превью формата — для всех карточек.
+                            Клинкер/прямоугольник «собран» кирпичной кладкой внутри квадрата. */}
+                        <FormatMiniPreview
+                          src={main}
+                          dimensions={p.dimensions}
+                          size={56}
+                          title={p.dimensions ? `${prettyFormat(p.dimensions)} мм` : undefined}
+                          className="absolute bottom-3 left-3 z-10"
+                        />
                       </div>
                       <div className={`p-4 ${isList ? "flex-1 flex flex-col justify-center" : ""}`}>
                         <div className="text-[10px] tracking-[.18em] uppercase text-[var(--ink-faint)] mb-1">{p.collection || p.category.name}</div>
@@ -362,6 +370,9 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                   );
                 })}
               </div>
+
+              <Pagination page={pageNum} pageCount={pageCount} hrefFor={pageHref} ariaLabel="Страницы каталога" />
+              </>
             ) : (
               <div className="text-center py-24 text-[var(--ink-mute)] text-base">{q ? `По запросу «${q}» ничего не найдено` : "Товары не найдены"}</div>
             )}

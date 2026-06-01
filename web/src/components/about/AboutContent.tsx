@@ -3,7 +3,28 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 
-export default function AboutContent() {
+type PortfolioCard = { img: string; tag: string; title: string; meta: string };
+
+// Демо-объекты по умолчанию (показываются, пока админ не добавил свои).
+const DEFAULT_PORTFOLIO: PortfolioCard[] = [
+  { img: "https://images.unsplash.com/photo-1605231591078-1d6208654b08?q=80&w=820&auto=format&fit=crop", tag: "Фасад · Керамогранит", title: "ЖК «Меридиан»", meta: "Бишкек · 2023" },
+  { img: "https://images.unsplash.com/photo-1521459467264-802e2ef3141f?q=80&w=820&auto=format&fit=crop", tag: "Входная группа · Керамогранит", title: "БЦ «Альтаир»", meta: "Бишкек · 2022" },
+  { img: "https://images.unsplash.com/photo-1625008668243-e10fa6121030?q=80&w=820&auto=format&fit=crop", tag: "Стены · Клинкер", title: "Ресторан «Кура»", meta: "Бишкек · 2023" },
+  { img: "https://images.unsplash.com/photo-1726987242665-d0a7d2268ea0?q=80&w=820&auto=format&fit=crop", tag: "Интерьер · Мозаика", title: "Резиденция «Тихая»", meta: "Бишкек · 2024" },
+  { img: "https://images.unsplash.com/photo-1536566482680-fca31930a0bd?q=80&w=820&auto=format&fit=crop", tag: "Лобби · Керамогранит", title: "Отель «Северная гавань»", meta: "Иссык-Куль · 2022" },
+  { img: "https://images.unsplash.com/photo-1703867110039-dc2ad34be121?q=80&w=820&auto=format&fit=crop", tag: "Бассейн · Мозаика", title: "Спа-комплекс «Тэрма»", meta: "Бишкек · 2024" },
+];
+const DEFAULT_CAPTION = "Где керамогранит, клинкер и мозаика Japan Ceramic уже работают — от фасадов до интерьеров.";
+
+export default function AboutContent({
+  portfolio,
+  portfolioCaption,
+}: {
+  portfolio?: PortfolioCard[];
+  portfolioCaption?: string;
+} = {}) {
+  const projects = portfolio && portfolio.length ? portfolio : DEFAULT_PORTFOLIO;
+  const projectsCaption = portfolioCaption || DEFAULT_CAPTION;
   const wallRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLElement>(null);
 
@@ -230,24 +251,17 @@ export default function AboutContent() {
           <div className="ab-sec-head">
             <div className="ab-eyebrow ab-reveal">Портфолио</div>
             <h2 className="ab-reveal" data-d="1">Наши объекты</h2>
-            <p className="ab-reveal" data-d="2">Где керамогранит, клинкер и мозаика Japan Ceramic уже работают — от фасадов до интерьеров.</p>
+            <p className="ab-reveal" data-d="2">{projectsCaption}</p>
           </div>
           <div className="ab-pj-grid">
-            {[
-              { img: "https://images.unsplash.com/photo-1605231591078-1d6208654b08?q=80&w=820&auto=format&fit=crop", tag: "Фасад · Керамогранит", title: "ЖК «Меридиан»", meta: "Бишкек · 2023", d: "" },
-              { img: "https://images.unsplash.com/photo-1521459467264-802e2ef3141f?q=80&w=820&auto=format&fit=crop", tag: "Входная группа · Керамогранит", title: "БЦ «Альтаир»", meta: "Бишкек · 2022", d: "1" },
-              { img: "https://images.unsplash.com/photo-1625008668243-e10fa6121030?q=80&w=820&auto=format&fit=crop", tag: "Стены · Клинкер", title: "Ресторан «Кура»", meta: "Бишкек · 2023", d: "2" },
-              { img: "https://images.unsplash.com/photo-1726987242665-d0a7d2268ea0?q=80&w=820&auto=format&fit=crop", tag: "Интерьер · Мозаика", title: "Резиденция «Тихая»", meta: "Бишкек · 2024", d: "" },
-              { img: "https://images.unsplash.com/photo-1536566482680-fca31930a0bd?q=80&w=820&auto=format&fit=crop", tag: "Лобби · Керамогранит", title: "Отель «Северная гавань»", meta: "Иссык-Куль · 2022", d: "1" },
-              { img: "https://images.unsplash.com/photo-1703867110039-dc2ad34be121?q=80&w=820&auto=format&fit=crop", tag: "Бассейн · Мозаика", title: "Спа-комплекс «Тэрма»", meta: "Бишкек · 2024", d: "2" },
-            ].map((p) => (
-              <article key={p.title} className="ab-pj-card ab-reveal" data-d={p.d || undefined}>
+            {projects.map((p, i) => (
+              <article key={`${p.title}-${i}`} className="ab-pj-card ab-reveal" data-d={(i % 3) ? String(i % 3) : undefined}>
                 <span className="ab-pj-arrow"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3.5 10.5L10.5 3.5M5 3.5h5.5V9" stroke="currentColor" strokeWidth="1.3" /></svg></span>
                 <div className="ab-pj-img"><img src={p.img} alt={p.title} /></div>
                 <div className="ab-pj-info">
-                  <span className="ab-pj-tag">{p.tag}</span>
-                  <h3>{p.title}</h3>
-                  <span className="ab-pj-meta">{p.meta}</span>
+                  {p.tag && <span className="ab-pj-tag">{p.tag}</span>}
+                  {p.title && <h3>{p.title}</h3>}
+                  {p.meta && <span className="ab-pj-meta">{p.meta}</span>}
                 </div>
               </article>
             ))}

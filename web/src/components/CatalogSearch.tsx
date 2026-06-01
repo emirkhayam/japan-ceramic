@@ -31,20 +31,23 @@ export default function CatalogSearch({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mb-8">
+    <form onSubmit={handleSubmit} className="mb-8" role="search">
       <div className="relative max-w-[480px]">
         <svg
           width="16"
           height="16"
           viewBox="0 0 24 24"
           fill="none"
+          aria-hidden="true"
           className="absolute left-[18px] top-1/2 -translate-y-1/2 text-[var(--ink-faint)]"
         >
           <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
           <path d="M16 16l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
         <input
-          type="text"
+          type="search"
+          inputMode="search"
+          aria-label="Поиск по каталогу"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="Название, цвет, размер, поверхность..."
@@ -54,6 +57,7 @@ export default function CatalogSearch({
           <button
             type="button"
             onClick={handleClear}
+            aria-label="Очистить поиск"
             className="absolute right-14 top-1/2 -translate-y-1/2 text-[var(--ink-faint)] hover:text-[var(--ink)] transition-colors text-lg"
           >
             &times;

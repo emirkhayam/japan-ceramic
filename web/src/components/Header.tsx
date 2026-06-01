@@ -4,6 +4,7 @@ import MobileMenu from "./MobileMenu";
 import HeaderShell from "./HeaderShell";
 import HeaderDropdown from "./HeaderDropdown";
 import BrandLogo from "./BrandLogo";
+import { PUBLIC_NAV } from "@/lib/nav";
 
 export default async function Header({ transparent }: { transparent?: boolean }) {
   const user = await getSession();
@@ -11,17 +12,11 @@ export default async function Header({ transparent }: { transparent?: boolean })
   return (
     <HeaderShell transparent={transparent}>
       <Link href="/" aria-label="Japan Ceramic — на главную">
-        <BrandLogo height={28} wordSize={15} />
+        <BrandLogo height={30} wordSize={13} stacked />
       </Link>
 
       <nav className="hidden md:flex gap-[38px]">
-        {[
-          { label: "Каталог", href: "/catalog" },
-          { label: "Коллекции", href: "/collections" },
-          { label: "AI-визуализация", href: "/visualize" },
-          { label: "О компании", href: "/about" },
-          { label: "Контакты", href: "/#contacts" },
-        ].map((item) => (
+        {PUBLIC_NAV.map((item) => (
           <Link key={item.label} href={item.href} className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
             {item.label}
             <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />

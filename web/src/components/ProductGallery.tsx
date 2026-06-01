@@ -282,7 +282,7 @@ export default function ProductGallery({
       {open && (
         <div
           ref={overlayRef}
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-[rgba(6,8,12,.94)] backdrop-blur-sm select-none"
+          className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-[rgba(6,8,12,.94)] backdrop-blur-sm select-none"
           onClick={closeLightbox}
           onMouseMove={onPointerMove}
           onMouseUp={onPointerUp}

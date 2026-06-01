@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import TablePager from "@/components/admin/TablePager";
+
+const PER_PAGE = 20;
 
 type Lead = {
   id: string;
@@ -27,6 +30,8 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [search, status]);
 
   async function markRead(id: string, isRead: boolean) {
     setBusy(id);
@@ -60,6 +65,10 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
     }
     return true;
   });
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const pageNum = Math.min(page, pageCount);
+  const pageItems = filtered.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
 
   if (leads.length === 0) {
     return (
@@ -107,7 +116,7 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
       </div>
 
       <div className="space-y-3">
-      {filtered.map((l) => (
+      {pageItems.map((l) => (
         <div
           key={l.id}
           className={`grid md:grid-cols-[1fr_auto] gap-4 px-6 py-5 border rounded-sm transition-all ${
@@ -158,6 +167,8 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
         </div>
       ))}
       </div>
+
+      <TablePager page={pageNum} pageCount={pageCount} onPage={setPage} />
     </div>
   );
 }

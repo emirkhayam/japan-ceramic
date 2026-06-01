@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import FavoriteButton from "@/components/FavoriteButton";
@@ -63,6 +64,27 @@ function MiniProductCard({
       {fmt && <div className="text-[11px] text-[var(--ink-mute)] mt-1 tabular-nums">{fmt}</div>}
     </Link>
   );
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
+  const product = await prisma.product.findFirst({
+    where: { slug, isActive: true },
+    select: { name: true, description: true, color: true, surface: true, category: { select: { name: true } } },
+  });
+  if (!product) return { title: "Товар не найден — Japan Ceramic" };
+  const descParts = [product.category?.name, product.surface, product.color].filter(Boolean);
+  return {
+    title: `${product.name} — Japan Ceramic`,
+    description:
+      product.description ||
+      `${product.name}${descParts.length ? ` — ${descParts.join(", ")}` : ""}. Премиальный керамогранит Japan Ceramic.`,
+  };
 }
 
 export default async function ProductDetailPage({
@@ -165,10 +187,6 @@ export default async function ProductDetailPage({
       { key: "boxWeight", label: "Вес коробки", value: product.boxWeight },
     ] as { key: string; label: string; value: string | null }[]
   ).filter((s) => s.value) as Spec[];
-  const half = Math.ceil(characteristics.length / 2);
-  const charColA = characteristics.slice(0, half);
-  const charColB = characteristics.slice(half);
-
   return (
     <>
       {/* Breadcrumb */}
@@ -209,10 +227,10 @@ export default async function ProductDetailPage({
                   <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[rgba(255,255,255,.08)] text-[var(--ink)] border border-white/15">Хит</span>
                 )}
                 {product.isNew && (
-                  <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[var(--color-gold-500)] text-[#0a0d12]">Новинка</span>
+                  <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[var(--color-gold-500)] text-[var(--on-gold)]">Новинка</span>
                 )}
                 {product.isOnSale && (
-                  <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[#c0392b] text-white">Акция</span>
+                  <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[var(--danger)] text-white">Акция</span>
                 )}
               </div>
             )}
@@ -239,10 +257,11 @@ export default async function ProductDetailPage({
             {product.collection && (
               <Link
                 href={`/catalog?q=${encodeURIComponent(product.collection)}`}
-                className="inline-flex items-center gap-2 text-[12px] tracking-[.1em] uppercase text-[var(--ink-mute)] hover:text-[var(--ink)] transition-colors mb-5"
+                className="group inline-flex items-center gap-2.5 text-[12px] tracking-[.14em] uppercase text-[var(--color-gold-400)] hover:text-[var(--color-gold-500)] transition-colors mb-5"
               >
+                <span className="w-6 h-px bg-[var(--color-gold-500)]" />
                 Коллекция {product.collection}
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M4 2l4 4-4 4"/></svg>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" className="transition-transform group-hover:translate-x-0.5"><path d="M4 2l4 4-4 4"/></svg>
               </Link>
             )}
 
@@ -264,7 +283,7 @@ export default async function ProductDetailPage({
                   <span className="text-[clamp(40px,5vw,64px)] font-extralight leading-none tracking-tight tabular-nums">{fmt.w}</span>
                   <span className="text-[clamp(24px,3.4vw,40px)] font-extralight text-[var(--ink-faint)] leading-none">×</span>
                   <span className="text-[clamp(40px,5vw,64px)] font-extralight leading-none tracking-tight tabular-nums">{fmt.h}</span>
-                  <span className="text-[13px] tracking-[.12em] uppercase text-[var(--ink-mute)] ml-1.5 self-end mb-2">мм</span>
+                  <span className="text-[13px] tracking-[.12em] uppercase text-[var(--color-gold-400)] ml-1.5 self-end mb-2">мм</span>
                 </div>
                 {thicknessText && (
                   <div className="text-[12px] text-[var(--ink-mute)] mb-2.5">
@@ -309,15 +328,15 @@ export default async function ProductDetailPage({
 
             {/* Materials */}
             <div>
-              <h2 className="text-[11px] tracking-[.22em] uppercase text-[var(--ink-mute)] mb-3">
-                Материалы для проекта
+              <h2 className="flex items-center gap-3 text-[11px] tracking-[.22em] uppercase text-[var(--color-gold-400)] mb-3">
+                <span className="w-6 h-px bg-[var(--color-gold-500)]" />Материалы для проекта
               </h2>
               <div className="flex flex-col gap-2.5">
                 <a
                   href={product.pdfUrl || `/api/product-card/${product.slug}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[var(--ink-mute)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
+                  className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[rgba(206,173,120,.5)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)] transition-colors"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   <div>
@@ -329,7 +348,7 @@ export default async function ProductDetailPage({
                   <a
                     href={product.zipUrl}
                     download
-                    className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[var(--ink-mute)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
+                    className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[rgba(206,173,120,.5)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)] transition-colors"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     <div>
@@ -348,36 +367,33 @@ export default async function ProductDetailPage({
               </p>
               <a
                 href="/#contacts"
-                className="inline-flex items-center gap-2.5 px-5 py-3 text-[13px] font-medium tracking-[.08em] uppercase border border-[var(--ink)] text-[var(--ink)] rounded-sm hover:bg-[var(--ink)] hover:text-[#0a0d12] transition-all duration-300 cursor-pointer"
+                className="inline-flex items-center gap-2.5 px-5 py-3 text-[13px] font-medium tracking-[.08em] uppercase border border-[var(--ink)] text-[var(--ink)] rounded-sm hover:bg-[var(--ink)] hover:text-[var(--on-gold)] transition-all duration-300 cursor-pointer"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z" fill="currentColor"/></svg>
                 Найти наш салон
               </a>
             </div>
             </div>
+
+            {/* Характеристики — в правой колонке, одноколоночный список */}
+            {characteristics.length > 0 && (
+              <div className="mt-9 pt-8 border-t border-[var(--line)]">
+                <h2 className="flex items-center gap-3 text-[11px] tracking-[.22em] uppercase text-[var(--color-gold-400)] mb-5">
+                  <span className="w-6 h-px bg-[var(--color-gold-500)]" />Характеристики
+                </h2>
+                <ProductSpecs specs={characteristics} />
+              </div>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Характеристики — на всю ширину, две колонки (как у Tubadzin) */}
-      {characteristics.length > 0 && (
-        <section className="border-t border-[var(--line)] py-16">
-          <div className="max-w-[1320px] mx-auto px-10 max-md:px-5">
-            <h2 className="text-[clamp(20px,2.4vw,30px)] font-extralight mb-10">Характеристики</h2>
-            <div className="grid md:grid-cols-2 gap-x-16 gap-y-0">
-              <ProductSpecs specs={charColA} />
-              <ProductSpecs specs={charColB} />
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* Other products in the collection */}
       {collectionProducts.length > 0 && (
         <section className="border-t border-[var(--line)] py-16">
           <div className="max-w-[1320px] mx-auto px-10 max-md:px-5">
-            <h2 className="text-[11px] tracking-[.22em] uppercase text-[var(--ink-mute)] mb-8">
-              Другие продукты коллекции «{product.collection}»
+            <h2 className="flex items-center gap-3 text-[11px] tracking-[.22em] uppercase text-[var(--color-gold-400)] mb-8">
+              <span className="w-6 h-px bg-[var(--color-gold-500)]" />Другие продукты коллекции «{product.collection}»
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
               {collectionProducts.map((p) => (
@@ -392,8 +408,8 @@ export default async function ProductDetailPage({
       {similar.length > 0 && (
         <section className="border-t border-[var(--line)] py-16">
           <div className="max-w-[1320px] mx-auto px-10 max-md:px-5">
-            <h2 className="text-[11px] tracking-[.22em] uppercase text-[var(--ink-mute)] mb-8">
-              Похожие товары
+            <h2 className="flex items-center gap-3 text-[11px] tracking-[.22em] uppercase text-[var(--color-gold-400)] mb-8">
+              <span className="w-6 h-px bg-[var(--color-gold-500)]" />Похожие товары
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {similar.map((p) => (

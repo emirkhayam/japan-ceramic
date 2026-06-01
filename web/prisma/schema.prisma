@@ -19,8 +19,40 @@ model User {
   createdAt      DateTime          @default(now())
   projects       DesignerProject[]
   favorites      Favorite[]
+  visualizations VisualizationLog[]
 
   @@map("users")
+}
+
+model PortfolioItem {
+  id        String   @id @default(uuid())
+  imageUrl  String
+  tag       String?
+  title     String?
+  meta      String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("portfolio_items")
+}
+
+model VisualizationLog {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tileSlug     String?
+  tileName     String?
+  surface      String?
+  provider     String   @default("gemini")
+  promptTokens Int      @default(0)
+  outputTokens Int      @default(0)
+  totalTokens  Int      @default(0)
+  success      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("visualization_logs")
 }
 
 model Category {
@@ -142,6 +174,31 @@ model Favorite {
 
   @@unique([userId, productId])
   @@map("favorites")
+}
+
+model SiteSettings {
+  id           String   @id @default("default")
+  phone        String?
+  whatsapp     String?
+  telegram     String?
+  instagram    String?
+  email        String?
+  address      String?
+  hours        String?
+  mapEmbedUrl  String?
+  mapLink      String?
+  showroomName String?
+  // Второй шоурум (опционально)
+  showroomName2 String?
+  address2      String?
+  mapLink2      String?
+  // Месячный лимит токенов AI-визуализации (для отображения «осталось» в админке).
+  aiTokenBudget Int?
+  // Подпись к блоку «Наши объекты» на странице О компании.
+  aboutPortfolioCaption String?
+  updatedAt    DateTime @updatedAt
+
+  @@map("site_settings")
 }
 
 model ContactLead {

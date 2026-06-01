@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { LogoMark } from "@/components/BrandLogo";
+import Pagination from "@/components/Pagination";
 
 export const dynamic = "force-dynamic";
+
+const PER_PAGE = 12;
 
 export const metadata = {
   title: "Коллекции — Japan Ceramic",
@@ -23,9 +26,9 @@ function pluralPos(n: number) {
 export default async function CollectionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ space?: string; style?: string; badge?: string }>;
+  searchParams: Promise<{ space?: string; style?: string; badge?: string; page?: string }>;
 }) {
-  const { space, style, badge } = await searchParams;
+  const { space, style, badge, page } = await searchParams;
 
   // Все опубликованные непустые коллекции (Murat #5 — пустые не показываем).
   const all = await prisma.collection.findMany({
@@ -48,12 +51,27 @@ export default async function CollectionsPage({
       (badge === "new" ? c.isNew : badge === "recommended" ? c.isRecommended : true)
   );
 
+  // Пагинация по уже отфильтрованному списку. Смена фильтров (hrefWith без page) сбрасывает на 1-ю.
+  const totalItems = collections.length;
+  const pageCount = Math.max(1, Math.ceil(totalItems / PER_PAGE));
+  const pageNum = Math.min(Math.max(1, parseInt(page || "1", 10) || 1), pageCount);
+  const pageItems = collections.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
+
   const hrefWith = (ov: { space?: string; style?: string; badge?: string }) => {
     const m = { space, style, badge, ...ov };
     const sp = new URLSearchParams();
     if (m.space) sp.set("space", m.space);
     if (m.style) sp.set("style", m.style);
     if (m.badge) sp.set("badge", m.badge);
+    const s = sp.toString();
+    return `/collections${s ? `?${s}` : ""}`;
+  };
+  const pageHref = (n: number) => {
+    const sp = new URLSearchParams();
+    if (space) sp.set("space", space);
+    if (style) sp.set("style", style);
+    if (badge) sp.set("badge", badge);
+    if (n > 1) sp.set("page", String(n));
     const s = sp.toString();
     return `/collections${s ? `?${s}` : ""}`;
   };
@@ -131,8 +149,9 @@ export default async function CollectionsPage({
                 По выбранным фильтрам коллекций нет.
               </div>
             ) : (
+              <>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-10">
-                {collections.map((c) => {
+                {pageItems.map((c) => {
                   const cover = c.coverImageUrl || c.products[0]?.images[0]?.imageUrl || null;
                   const tags = [c.spaceTag, c.styleTag].filter(Boolean) as string[];
                   return (
@@ -183,6 +202,8 @@ export default async function CollectionsPage({
                   );
                 })}
               </div>
+              <Pagination page={pageNum} pageCount={pageCount} hrefFor={pageHref} ariaLabel="Страницы коллекций" />
+              </>
             )}
           </div>
         </div>

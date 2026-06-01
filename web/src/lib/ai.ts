@@ -15,10 +15,19 @@ export type VisualizeInput = {
   provider?: Provider;
 };
 
+export type TokenUsage = {
+  promptTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+type ProviderOutput = { imageUrl: string; usage?: TokenUsage };
+
 export type VisualizeResult = {
   imageUrl: string;
   durationMs: number;
   provider: Provider;
+  usage?: TokenUsage;
 };
 
 export const PROVIDERS_META: Record<
@@ -72,22 +81,22 @@ function pickProvider(requested?: Provider): Provider {
 export async function visualize(input: VisualizeInput): Promise<VisualizeResult> {
   const provider = pickProvider(input.provider);
   const started = Date.now();
-  let imageUrl: string;
+  let out: ProviderOutput;
 
   try {
     switch (provider) {
       case 'fal':
-        imageUrl = await viaFal(input);
+        out = await viaFal(input);
         break;
       case 'replicate':
-        imageUrl = await viaReplicate(input);
+        out = await viaReplicate(input);
         break;
       case 'gemini':
-        imageUrl = await viaGemini(input);
+        out = await viaGemini(input);
         break;
       case 'mock':
       default:
-        imageUrl = await viaMock(input);
+        out = await viaMock(input);
     }
   } catch (err) {
     throw new Error(
@@ -95,11 +104,11 @@ export async function visualize(input: VisualizeInput): Promise<VisualizeResult>
     );
   }
 
-  return { imageUrl, durationMs: Date.now() - started, provider };
+  return { imageUrl: out.imageUrl, durationMs: Date.now() - started, provider, usage: out.usage };
 }
 
 // ---------- fal.ai ----------
-async function viaFal(input: VisualizeInput): Promise<string> {
+async function viaFal(input: VisualizeInput): Promise<ProviderOutput> {
   const key = process.env.FAL_KEY;
   if (!key) throw new Error('FAL_KEY не задан в .env.local');
   fal.config({ credentials: key });
@@ -124,11 +133,11 @@ async function viaFal(input: VisualizeInput): Promise<string> {
     result?.images?.[0]?.url ??
     result?.image?.url;
   if (!url) throw new Error('Ответ fal.ai без URL картинки');
-  return url;
+  return { imageUrl: url };
 }
 
 // ---------- Replicate ----------
-async function viaReplicate(input: VisualizeInput): Promise<string> {
+async function viaReplicate(input: VisualizeInput): Promise<ProviderOutput> {
   const key = process.env.REPLICATE_API_TOKEN;
   if (!key) throw new Error('REPLICATE_API_TOKEN не задан в .env.local');
 
@@ -148,16 +157,16 @@ async function viaReplicate(input: VisualizeInput): Promise<string> {
     },
   });
 
-  if (typeof output === 'string') return output;
+  if (typeof output === 'string') return { imageUrl: output };
   if (Array.isArray(output) && output[0]) {
-    return typeof output[0] === 'string' ? output[0] : String(output[0]);
+    return { imageUrl: typeof output[0] === 'string' ? output[0] : String(output[0]) };
   }
-  if (output?.url) return typeof output.url === 'function' ? output.url() : output.url;
+  if (output?.url) return { imageUrl: typeof output.url === 'function' ? output.url() : output.url };
   throw new Error('Replicate: неожиданная форма ответа');
 }
 
 // ---------- Google Gemini 2.5 Flash Image ----------
-async function viaGemini(input: VisualizeInput): Promise<string> {
+async function viaGemini(input: VisualizeInput): Promise<ProviderOutput> {
   const key = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GOOGLE_API_KEY не задан в .env.local');
 
@@ -203,12 +212,18 @@ Output only the final edited photo, nothing else.`;
     });
     console.log('[viaGemini] Response received:', JSON.stringify(response).substring(0, 500));
 
+    const um = response?.usageMetadata || {};
+    const usage: TokenUsage = {
+      promptTokens: um.promptTokenCount ?? 0,
+      outputTokens: um.candidatesTokenCount ?? 0,
+      totalTokens: um.totalTokenCount ?? (um.promptTokenCount ?? 0) + (um.candidatesTokenCount ?? 0),
+    };
     const parts = response?.candidates?.[0]?.content?.parts || [];
     for (const part of parts) {
       if (part?.inlineData?.data) {
         const mime = part.inlineData.mimeType || 'image/png';
         console.log('[viaGemini] Image found in response, size:', part.inlineData.data.length);
-        return `data:${mime};base64,${part.inlineData.data}`;
+        return { imageUrl: `data:${mime};base64,${part.inlineData.data}`, usage };
       }
     }
     console.error('[viaGemini] No image in response. Parts:', JSON.stringify(parts));
@@ -221,11 +236,11 @@ Output only the final edited photo, nothing else.`;
 }
 
 // ---------- Mock ----------
-async function viaMock(input: VisualizeInput): Promise<string> {
+async function viaMock(input: VisualizeInput): Promise<ProviderOutput> {
   // Имитируем задержку настоящего инференса
   await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1500));
   // Возвращаем тайл-картинку как "результат" — для офлайн-демо
-  return input.tileImageUrl;
+  return { imageUrl: input.tileImageUrl };
 }
 
 // ---------- Helpers ----------

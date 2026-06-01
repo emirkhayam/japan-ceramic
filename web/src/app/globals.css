@@ -23,11 +23,23 @@
   --line-2: rgba(255,255,255,.16);
   --ink: #f4f5f7;
   --ink-soft: #b9bfc9;
-  --ink-mute: #6f7782;
-  --ink-faint: #4a525d;
+  /* Контраст на фоне #080a0f: mute ≈5.3:1 (AA для обычного текста), faint ≈3.9:1
+     (AA для крупного/второстепенного). Подняты с #6f7782/#4a525d, которые не дотягивали. */
+  --ink-mute: #828a97;
+  --ink-faint: #69707c;
   --accent: #c8d2e0;
   --glow: rgba(120,150,200,.16);
   --ease: cubic-bezier(.22,.61,.36,1);
+  /* Семантические токены (вместо хардкода по файлам) */
+  --surface-1: rgba(255,255,255,.04);
+  --surface-2: rgba(255,255,255,.08);
+  --on-gold: #0a0d12;        /* тёмный текст на золоте/светлых кнопках */
+  --danger: #c0392b;         /* акция/удаление */
+  /* z-index шкала */
+  --z-header: 1000;
+  --z-overlay: 200;
+  --z-drawer: 1400;
+  --z-menu: 1500;
   /* Фирменный шрифт заголовков: латиница — Krona One, кириллица — Prosto One */
   --font-display: var(--font-krona), var(--font-prosto), var(--font-sans), 'Inter', sans-serif;
   /* Бренд-цвета из логотипа */
@@ -36,6 +48,14 @@
 }
 
 * { box-sizing: border-box; }
+
+/* Видимый фокус для клавиатурной навигации (a11y). Только :focus-visible —
+   чтобы кольцо не появлялось при клике мышью. */
+:focus-visible {
+  outline: 2px solid var(--color-gold-400);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 
 body {
   background: var(--bg);
@@ -90,7 +110,7 @@ h1, h2 {
     justify-content: center;
     gap: .5rem;
     background: var(--color-gold-500);
-    color: #0a0d12;
+    color: var(--on-gold);
     font-weight: 600;
     padding: .8rem 1.6rem;
     border-radius: 3px;

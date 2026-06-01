@@ -3,9 +3,27 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
+interface Showroom {
+  name: string | null;
+  address: string | null;
+  hours: string | null;
+  mapLink: string | null;
+  mapEmbedUrl: string | null;
+}
+
+interface Contacts {
+  phone: string | null;
+  phoneHref: string | null;
+  email: string | null;
+  telegram: string | null;
+  whatsapp: string | null;
+  showrooms: Showroom[];
+}
+
 interface Props {
   user: { fullName: string; role: string } | null;
   collections: { slug: string; name: string; img: string | null; desc: string }[];
+  contacts: Contacts;
 }
 
 // Фолбэк для блока «Пространства», если опубликованных коллекций ещё нет.
@@ -17,9 +35,12 @@ const ATMO_FALLBACK = [
   { img: "https://images.unsplash.com/photo-1640357960494-9242650846d3?q=80&w=1200&auto=format&fit=crop", name: "Silent Luxury", desc: "Роскошь в тишине и совершенстве" },
 ];
 
-export default function LandingContent({ user, collections }: Props) {
+export default function LandingContent({ user, collections, contacts }: Props) {
   const heroVideoRef = useRef<HTMLVideoElement>(null);
   const [videoLoaded, setVideoLoaded] = useState(false);
+  const showrooms = contacts.showrooms.length ? contacts.showrooms : [{ name: "Шоурум", address: null, hours: null, mapLink: null, mapEmbedUrl: null }];
+  const [room, setRoom] = useState(0);
+  const active = showrooms[Math.min(room, showrooms.length - 1)];
 
   // Video loaded — handle the case where data is already buffered before
   // this effect runs (cached video fires loadeddata before listeners attach).
@@ -144,35 +165,6 @@ export default function LandingContent({ user, collections }: Props) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, []);
-
-  // Contacts showroom selector
-  useEffect(() => {
-    const rooms = [
-      { city: "Бишкек", type: "Шоурум", name: "Japan Ceramic Бишкек", addr: "г. Бишкек, ул. Юнусалиева, 28", hours: "Ежедневно · 10:00–18:00", x: "50%", y: "50%", map: "https://2gis.kg/bishkek/firm/70000001100637803" },
-    ];
-    const btns = document.querySelectorAll<HTMLButtonElement>(".ct-room");
-    const pin = document.getElementById("ctPin");
-    const glow = document.getElementById("ctGlow");
-    const city = document.getElementById("ctCity");
-    const detail = document.getElementById("ctDetail");
-    if (!btns.length || !pin || !glow || !city || !detail) return;
-    function pick(i: number) {
-      const r = rooms[i];
-      btns.forEach((b, k) => b.classList.toggle("active", k === i));
-      pin!.style.left = r.x; pin!.style.top = r.y;
-      glow!.style.left = r.x; glow!.style.top = r.y;
-      city!.textContent = r.city;
-      document.getElementById("cdType")!.textContent = r.type;
-      document.getElementById("cdName")!.textContent = r.name;
-      document.getElementById("cdAddr")!.textContent = r.addr;
-      document.getElementById("cdHours")!.textContent = r.hours;
-      document.getElementById("ctRoute")!.setAttribute("href", r.map || `https://maps.google.com/?q=${encodeURIComponent(r.addr)}`);
-      detail!.style.animation = "none";
-      void (detail as HTMLElement).offsetWidth;
-      detail!.style.animation = "ctfade .5s var(--ease)";
-    }
-    btns.forEach((b, i) => b.addEventListener("click", () => pick(i)));
   }, []);
 
   // Lead form
@@ -441,18 +433,26 @@ export default function LandingContent({ user, collections }: Props) {
           <div className="ct-grid">
             <div className="ct-left reveal">
               <div className="ct-direct">
-                <a className="ct-line" href="tel:+996503337733">
-                  <span className="ct-ic"><svg width="17" height="17" viewBox="0 0 18 18" fill="none"><path d="M6.4 3.4C6.4 2.9 6 2.5 5.5 2.5H3.6C3 2.5 2.5 3 2.6 3.6 3 8.6 7 14.6 14.4 15.4 15 15.5 15.5 15 15.5 14.4V12.5C15.5 12 15.1 11.6 14.6 11.6L12.2 11.3C11.8 11.3 11.4 11.5 11.2 11.8L10.1 13C8 11.9 6.1 10 5 7.9L6.2 6.8C6.5 6.6 6.7 6.2 6.7 5.8L6.4 3.4Z" stroke="currentColor" strokeWidth="1.2" /></svg></span>
-                  <span><span className="ct-lab">Телефон</span><span className="ct-val">+996 503 33 77 33</span></span>
-                </a>
-                <a className="ct-line" href="mailto:info@japanceramic.ru">
-                  <span className="ct-ic"><svg width="17" height="17" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="4" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" /><path d="M3.2 5L9 9.6 14.8 5" stroke="currentColor" strokeWidth="1.2" /></svg></span>
-                  <span><span className="ct-lab">Почта</span><span className="ct-val">info@japanceramic.ru</span></span>
-                </a>
+                {contacts.phone && (
+                  <a className="ct-line" href={contacts.phoneHref || undefined}>
+                    <span className="ct-ic"><svg width="17" height="17" viewBox="0 0 18 18" fill="none"><path d="M6.4 3.4C6.4 2.9 6 2.5 5.5 2.5H3.6C3 2.5 2.5 3 2.6 3.6 3 8.6 7 14.6 14.4 15.4 15 15.5 15.5 15 15.5 14.4V12.5C15.5 12 15.1 11.6 14.6 11.6L12.2 11.3C11.8 11.3 11.4 11.5 11.2 11.8L10.1 13C8 11.9 6.1 10 5 7.9L6.2 6.8C6.5 6.6 6.7 6.2 6.7 5.8L6.4 3.4Z" stroke="currentColor" strokeWidth="1.2" /></svg></span>
+                    <span><span className="ct-lab">Телефон</span><span className="ct-val">{contacts.phone}</span></span>
+                  </a>
+                )}
+                {contacts.email && (
+                  <a className="ct-line" href={`mailto:${contacts.email}`}>
+                    <span className="ct-ic"><svg width="17" height="17" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="4" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" /><path d="M3.2 5L9 9.6 14.8 5" stroke="currentColor" strokeWidth="1.2" /></svg></span>
+                    <span><span className="ct-lab">Почта</span><span className="ct-val">{contacts.email}</span></span>
+                  </a>
+                )}
               </div>
               <div className="ct-msgr">
-                <a href="https://t.me/japanceramic" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M14.5 2L1.5 7l3.5 1.4L13 4 6.5 9.7l-.2 3.6L8.4 11l3.1 2.3L14.5 2z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" /></svg>Telegram</a>
-                <a href="https://wa.me/996503337733" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.7a6.3 6.3 0 00-5.4 9.5L1.6 14.4l3.3-1A6.3 6.3 0 108 1.7Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" /><path d="M6 5.5c.6 1.6 1.9 2.9 3.5 3.5l.9-.9 1.5.6c0 1-.9 1.6-1.8 1.5C7.8 11 5 8.2 4.8 5.9c-.1-.9.5-1.8 1.5-1.8l.6 1.4-.9.9-.1.1Z" fill="currentColor" /></svg>WhatsApp</a>
+                {contacts.telegram && (
+                  <a href={contacts.telegram} target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M14.5 2L1.5 7l3.5 1.4L13 4 6.5 9.7l-.2 3.6L8.4 11l3.1 2.3L14.5 2z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" /></svg>Telegram</a>
+                )}
+                {contacts.whatsapp && (
+                  <a href={contacts.whatsapp} target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.7a6.3 6.3 0 00-5.4 9.5L1.6 14.4l3.3-1A6.3 6.3 0 108 1.7Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" /><path d="M6 5.5c.6 1.6 1.9 2.9 3.5 3.5l.9-.9 1.5.6c0 1-.9 1.6-1.8 1.5C7.8 11 5 8.2 4.8 5.9c-.1-.9.5-1.8 1.5-1.8l.6 1.4-.9.9-.1.1Z" fill="currentColor" /></svg>WhatsApp</a>
+                )}
               </div>
               <form id="leadForm" style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
                 <span className="ct-rooms-label" style={{ marginBottom: 2 }}>Оставить заявку</span>
@@ -466,28 +466,39 @@ export default function LandingContent({ user, collections }: Props) {
                 <div id="leadMsg" style={{ fontSize: 13, color: "var(--ink-soft)", minHeight: 18 }} />
               </form>
               <div>
-                <span className="ct-rooms-label">Наши шоурумы</span>
-                <button className="ct-room active" data-i="0">
-                  <span className="ct-cdot" />
-                  <span className="ct-rc"><b>Бишкек</b><span>ул. Юнусалиева, 28</span></span>
-                  <span className="ct-rarrow"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3 7.5h9M8 3l4.5 4.5L8 12" stroke="currentColor" strokeWidth="1.3" /></svg></span>
-                </button>
+                <span className="ct-rooms-label">{showrooms.length > 1 ? "Наши шоурумы" : "Наш шоурум"}</span>
+                {showrooms.map((sr, i) => (
+                  <button key={i} type="button" className={`ct-room ${i === room ? "active" : ""}`} onClick={() => setRoom(i)}>
+                    <span className="ct-cdot" />
+                    <span className="ct-rc"><b>{sr.name}</b><span>{sr.address}</span></span>
+                    <span className="ct-rarrow"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3 7.5h9M8 3l4.5 4.5L8 12" stroke="currentColor" strokeWidth="1.3" /></svg></span>
+                  </button>
+                ))}
               </div>
             </div>
             <div className="ct-panel reveal" data-d="1">
-              <div className="ct-streets" />
-              <div className="ct-glow" id="ctGlow" style={{ left: "50%", top: "50%" }} />
-              <div className="ct-city" id="ctCity">Бишкек</div>
-              <div className="ct-pin" id="ctPin" style={{ left: "50%", top: "50%" }}><span className="pr" /><span className="pd" /></div>
-              <div className="ct-detail" id="ctDetail">
-                <div className="cd-type" id="cdType">Шоурум</div>
-                <div className="cd-name" id="cdName">Japan Ceramic Бишкек</div>
-                <div className="cd-row"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.6c2.5 0 4.3 1.9 4.3 4.3C11.3 9 7 12.4 7 12.4S2.7 9 2.7 5.9C2.7 3.5 4.5 1.6 7 1.6Z" stroke="currentColor" strokeWidth="1.2" /><circle cx="7" cy="5.8" r="1.5" stroke="currentColor" strokeWidth="1.2" /></svg><span id="cdAddr">г. Бишкек, ул. Юнусалиева, 28</span></div>
-                <div className="cd-row"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.3" stroke="currentColor" strokeWidth="1.2" /><path d="M7 3.9V7l2.1 1.6" stroke="currentColor" strokeWidth="1.2" /></svg><span id="cdHours">Ежедневно · 10:00–18:00</span></div>
-                <a className="ct-route" id="ctRoute" href="https://2gis.kg/bishkek/firm/70000001100637803" target="_blank" rel="noopener">
-                  Построить маршрут
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h11M7.5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
-                </a>
+              {active.mapEmbedUrl ? (
+                /* Карта 2ГИС/OSM — встраивается из админки (виджет 2ГИС или авто-карта по ссылке). */
+                <iframe key={active.mapEmbedUrl} className="ct-map" src={active.mapEmbedUrl} title={`Карта — ${active.name || "шоурум"}`} loading="lazy" allowFullScreen />
+              ) : (
+                <>
+                  <div className="ct-streets" />
+                  <div className="ct-glow" style={{ left: "50%", top: "50%" }} />
+                  <div className="ct-city">{active.name}</div>
+                  <div className="ct-pin" style={{ left: "50%", top: "50%" }}><span className="pr" /><span className="pd" /></div>
+                </>
+              )}
+              <div className="ct-detail" key={room}>
+                <div className="cd-type">Шоурум</div>
+                <div className="cd-name">{active.name}</div>
+                {active.address && <div className="cd-row"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.6c2.5 0 4.3 1.9 4.3 4.3C11.3 9 7 12.4 7 12.4S2.7 9 2.7 5.9C2.7 3.5 4.5 1.6 7 1.6Z" stroke="currentColor" strokeWidth="1.2" /><circle cx="7" cy="5.8" r="1.5" stroke="currentColor" strokeWidth="1.2" /></svg><span>{active.address}</span></div>}
+                {active.hours && <div className="cd-row"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.3" stroke="currentColor" strokeWidth="1.2" /><path d="M7 3.9V7l2.1 1.6" stroke="currentColor" strokeWidth="1.2" /></svg><span>{active.hours}</span></div>}
+                {active.mapLink && (
+                  <a className="ct-route" href={active.mapLink} target="_blank" rel="noopener">
+                    Построить маршрут
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h11M7.5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -500,8 +511,8 @@ export default function LandingContent({ user, collections }: Props) {
 /* ===== ALL LANDING STYLES ===== */
 const landingStyles = `
   .wrap{max-width:1320px;margin:0 auto;padding:0 40px}
-  .eyebrow{font-size:11px;font-weight:600;letter-spacing:.34em;text-transform:uppercase;color:var(--ink-mute);display:flex;align-items:center;gap:14px}
-  .eyebrow::before{content:"";width:34px;height:1px;background:var(--line-2)}
+  .eyebrow{font-size:11px;font-weight:600;letter-spacing:.34em;text-transform:uppercase;color:var(--color-gold-400);display:flex;align-items:center;gap:14px}
+  .eyebrow::before{content:"";width:34px;height:1px;background:linear-gradient(90deg,var(--color-gold-500),rgba(198,154,78,.12))}
   .reveal{opacity:0;transform:translateY(34px);transition:opacity 1.1s var(--ease),transform 1.1s var(--ease)}
   .reveal.in{opacity:1;transform:none}
   .reveal[data-d="1"]{transition-delay:.08s}
@@ -581,14 +592,15 @@ const landingStyles = `
   .cat3d-gloss{position:absolute;inset:0;z-index:3;pointer-events:none;opacity:0;border-radius:inherit;background:radial-gradient(440px circle at var(--mx,50%) var(--my,10%),rgba(255,255,255,.16),transparent 60%);transition:opacity .4s var(--ease)}
   .cat3d-box:hover .cat3d-gloss{opacity:1}
   .cat3d-body{position:absolute;left:30px;right:30px;top:34px;bottom:34px;z-index:4;display:flex;flex-direction:column}
-  .cat3d-idx{font-family:var(--font-serif),'Playfair Display',serif;font-size:20px;color:var(--ink-soft);letter-spacing:.06em}
+  .cat3d-idx{font-family:var(--font-serif),'Playfair Display',serif;font-size:20px;color:var(--color-gold-400);letter-spacing:.06em}
   .cat3d-line{width:1px;flex:1;margin:16px 0 16px 1px;background:linear-gradient(180deg,var(--line-2),rgba(255,255,255,.04))}
   .cat3d-title{font-size:clamp(23px,2vw,30px);font-weight:300;letter-spacing:.005em}
   .cat3d-desc{font-size:13.5px;color:var(--ink-soft);margin-top:12px;max-width:236px;line-height:1.5}
   .cat3d-link{display:inline-flex;align-items:center;gap:12px;margin-top:24px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink)}
   .cat3d-link .ll{width:46px;height:1px;background:var(--line-2);transition:width .5s var(--ease),background .5s var(--ease)}
   .cat3d-link svg{transition:transform .45s var(--ease)}
-  .cat3d-box:hover .cat3d-link .ll{width:82px;background:var(--ink)}
+  .cat3d-box:hover .cat3d-link{color:var(--color-gold-400)}
+  .cat3d-box:hover .cat3d-link .ll{width:82px;background:var(--color-gold-500)}
   .cat3d-box:hover .cat3d-link svg{transform:translateX(4px)}
   .cat3d-floor{position:absolute;left:-9%;right:-9%;bottom:-5%;height:104px;z-index:-1;background:radial-gradient(ellipse 56% 100% at 50% 100%,rgba(0,0,0,.92),transparent 74%);filter:blur(13px)}
   .cat3d[data-i="1"] .cat3d-floor{background:radial-gradient(ellipse 62% 100% at 50% 100%,rgba(0,0,0,.92),transparent 72%),radial-gradient(ellipse 98% 66% at 50% 92%,rgba(122,150,206,.2),transparent 70%)}
@@ -622,7 +634,7 @@ const landingStyles = `
   .atmo-meta h3{font-size:19px;font-weight:300;margin-bottom:7px}
   .atmo-meta p{font-size:12px;color:var(--ink-soft);line-height:1.45}
   .atmo-meta .ln{width:24px;height:1px;background:var(--line-2);margin-top:14px;transition:width .5s var(--ease)}
-  .atmo-card:hover .atmo-meta .ln{width:54px;background:var(--ink)}
+  .atmo-card:hover .atmo-meta .ln{width:54px;background:var(--color-gold-500)}
 
   .adv{background:var(--bg)}
   .adv-head{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:end;margin-bottom:66px}
@@ -631,7 +643,7 @@ const landingStyles = `
   .adv-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
   .adv-item{padding:38px 30px 38px 0;border-top:1px solid var(--line-2)}
   .adv-item .ic{width:52px;height:52px;border:1px solid var(--line-2);border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:24px;transition:.45s var(--ease)}
-  .adv-item:hover .ic{background:var(--ink);color:#0a0d12;transform:translateY(-4px)}
+  .adv-item:hover .ic{background:var(--color-gold-500);color:var(--on-gold);border-color:var(--color-gold-500);transform:translateY(-4px)}
   .adv-item h3{font-size:17px;font-weight:500;margin-bottom:12px}
   .adv-item p{font-size:13px;color:var(--ink-mute);line-height:1.55}
 
@@ -641,7 +653,7 @@ const landingStyles = `
   .brand-text h2{font-size:clamp(32px,3.8vw,52px);margin-bottom:24px}
   .brand-text>p{font-size:15px;color:var(--ink-soft);max-width:430px;margin-bottom:34px}
   .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:46px;padding-top:40px;border-top:1px solid var(--line)}
-  .stat .nm{font-family:var(--font-serif),'Playfair Display',serif;font-size:46px;font-weight:500;line-height:1;letter-spacing:-.01em}
+  .stat .nm{font-family:var(--font-serif),'Playfair Display',serif;font-size:46px;font-weight:500;line-height:1;letter-spacing:-.01em;color:var(--color-gold-400)}
   .stat .lb{font-size:11.5px;color:var(--ink-mute);margin-top:8px;letter-spacing:.02em}
   .brand-visual{position:relative;aspect-ratio:4/4.4;border-radius:3px;overflow:hidden;border:1px solid var(--line)}
   .brand-visual>img{width:100%;height:100%;object-fit:cover;filter:brightness(.7) grayscale(.2)}
@@ -680,6 +692,7 @@ const landingStyles = `
   .ct-room.active .ct-rarrow,.ct-room:hover .ct-rarrow{color:var(--ink)}
   .ct-panel{position:relative;border:1px solid var(--line-2);border-radius:5px;overflow:hidden;min-height:486px;background:linear-gradient(160deg,var(--bg-3),var(--bg));box-shadow:0 40px 80px -54px rgba(0,0,0,.9);display:flex;flex-direction:column;justify-content:flex-end}
   .ct-streets{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(24deg,transparent 0 46px,rgba(255,255,255,.045) 46px 47px),repeating-linear-gradient(114deg,transparent 0 62px,rgba(255,255,255,.04) 62px 63px),repeating-linear-gradient(24deg,transparent 0 150px,rgba(255,255,255,.055) 150px 152px),repeating-linear-gradient(114deg,transparent 0 188px,rgba(255,255,255,.05) 188px 190px)}
+  .ct-map{position:absolute;inset:0;width:100%;height:100%;border:0}
   .ct-glow{position:absolute;width:300px;height:300px;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);background:radial-gradient(circle,var(--glow),transparent 66%);transition:left .7s var(--ease),top .7s var(--ease)}
   .ct-city{position:absolute;top:30px;left:34px;right:34px;font-family:var(--font-serif),'Playfair Display',serif;font-size:clamp(38px,4.6vw,64px);font-weight:500;font-style:italic;color:rgba(255,255,255,.08);transition:opacity .4s var(--ease)}
   .ct-pin{position:absolute;width:16px;height:16px;transform:translate(-50%,-50%);z-index:2;transition:left .7s var(--ease),top .7s var(--ease)}
@@ -687,7 +700,7 @@ const landingStyles = `
   .ct-pin .pr{position:absolute;left:50%;top:50%;width:16px;height:16px;border-radius:50%;border:1px solid var(--accent);transform:translate(-50%,-50%);animation:ctping 2.6s var(--ease) infinite}
   @keyframes ctping{0%{transform:translate(-50%,-50%) scale(1);opacity:.75}70%,100%{transform:translate(-50%,-50%) scale(4.6);opacity:0}}
   .ct-detail{position:relative;z-index:3;padding:32px 34px;background:linear-gradient(180deg,transparent,rgba(8,10,15,.55) 26%,rgba(8,10,15,.96))}
-  .cd-type{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+  .cd-type{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--color-gold-400);margin-bottom:8px}
   .cd-name{font-family:var(--font-serif),'Playfair Display',serif;font-size:30px;font-weight:500;margin-bottom:16px}
   .cd-row{display:flex;gap:12px;align-items:flex-start;font-size:14px;color:var(--ink-soft);padding:4px 0}
   .cd-row svg{flex:none;margin-top:3px;color:var(--accent)}

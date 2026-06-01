@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
+import LogoutButton from "@/components/LogoutButton";
 
 function IconDashboard({ className }: { className?: string }) {
   return (
@@ -79,6 +80,34 @@ function IconCollections({ className }: { className?: string }) {
   );
 }
 
+function IconSettings({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="9" r="2.6" />
+      <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4" />
+    </svg>
+  );
+}
+
+function IconVisualize({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="14" height="11" rx="1.5" />
+      <path d="M2 11l4-3.5 3 2.5 3-3 4 3.5" />
+      <circle cx="6.5" cy="6.5" r="1.1" />
+    </svg>
+  );
+}
+
+function IconPortfolio({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="4.5" width="15" height="10" rx="1.5" />
+      <path d="M6 4.5V3.2A1.2 1.2 0 017.2 2h3.6A1.2 1.2 0 0112 3.2v1.3" />
+    </svg>
+  );
+}
+
 const items = [
   { href: "/admin", label: "Дашборд", exact: true, Icon: IconDashboard },
   { href: "/admin/products", label: "Товары", Icon: IconProducts },
@@ -86,6 +115,9 @@ const items = [
   { href: "/admin/categories", label: "Категории", Icon: IconCategories },
   { href: "/admin/leads", label: "Заявки", Icon: IconLeads },
   { href: "/admin/users", label: "Пользователи", Icon: IconUsers },
+  { href: "/admin/visualizations", label: "AI-визуализации", Icon: IconVisualize },
+  { href: "/admin/portfolio", label: "Объекты", Icon: IconPortfolio },
+  { href: "/admin/settings", label: "Контакты сайта", Icon: IconSettings },
 ];
 
 export function AdminSidebar() {
@@ -131,13 +163,10 @@ export function AdminSidebar() {
             <IconBack className="opacity-50" />
             На сайт
           </a>
-          <a
-            href="/api/auth/logout"
-            className="flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] text-[var(--ink-faint)] hover:text-red-400/80 hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
-          >
+          <LogoutButton className="flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] text-[var(--ink-faint)] hover:text-red-400/80 hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer w-full text-left disabled:opacity-50">
             <IconLogout className="opacity-40" />
             Выйти
-          </a>
+          </LogoutButton>
         </div>
       </div>
     </aside>

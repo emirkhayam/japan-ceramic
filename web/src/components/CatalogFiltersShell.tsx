@@ -37,7 +37,7 @@ export default function CatalogFiltersShell({
 
       {/* Mobile drawer */}
       {open && (
-        <div className="lg:hidden fixed inset-0 z-[1400]">
+        <div className="lg:hidden fixed inset-0 z-[var(--z-drawer)]">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div className="absolute left-0 top-0 bottom-0 w-[82%] max-w-[340px] bg-[#0c1018] border-r border-[var(--line)] overflow-y-auto p-6 animate-[drawer-in_.3s_ease]">
             <div className="flex items-center justify-between mb-6">

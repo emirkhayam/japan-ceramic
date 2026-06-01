@@ -63,11 +63,12 @@ export default function NoteEditor({ projectId, itemId, initialNote }: NoteEdito
   }
 
   return (
-    <span
+    <button
+      type="button"
       onClick={() => setEditing(true)}
-      className="text-[12px] text-[var(--ink-mute)] cursor-pointer hover:text-[var(--ink-soft)] transition-colors"
+      className="text-[12px] text-left text-[var(--ink-mute)] cursor-pointer hover:text-[var(--ink-soft)] transition-colors"
     >
       {initialNote || "Добавить заметку"}
-    </span>
+    </button>
   );
 }

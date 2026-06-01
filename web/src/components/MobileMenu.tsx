@@ -3,14 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import BrandLogo from "./BrandLogo";
-
-const navItems = [
-  { label: "Каталог", href: "/catalog" },
-  { label: "Коллекции", href: "/collections" },
-  { label: "AI-визуализация", href: "/visualize" },
-  { label: "О компании", href: "/about" },
-  { label: "Контакты", href: "/#contacts" },
-];
+import LogoutButton from "./LogoutButton";
+import { PUBLIC_NAV } from "@/lib/nav";
 
 export default function MobileMenu({
   isAuthed,
@@ -37,7 +31,7 @@ export default function MobileMenu({
       </button>
 
       {open && (
-        <div className="fixed top-0 left-0 w-screen h-screen z-[1500] bg-[#0a0d12] overflow-y-auto flex flex-col p-8">
+        <div className="fixed top-0 left-0 w-screen h-screen z-[var(--z-menu)] bg-[#0a0d12] overflow-y-auto flex flex-col p-8">
           <div className="flex justify-between items-center mb-6">
             <BrandLogo height={24} wordSize={13} />
             <button
@@ -50,7 +44,7 @@ export default function MobileMenu({
           </div>
 
           <nav className="flex flex-col">
-            {navItems.map((it) => (
+            {PUBLIC_NAV.map((it) => (
               <Link key={it.label} href={it.href} onClick={close} className="text-2xl font-extralight py-3.5 border-b border-[var(--line)] text-[var(--ink)]">
                 {it.label}
               </Link>
@@ -68,9 +62,9 @@ export default function MobileMenu({
                 <Link href="/cabinet" onClick={close} className="btn-ghost w-full">
                   Кабинет{userName ? ` · ${userName}` : ""}
                 </Link>
-                <a href="/api/auth/logout" className="text-center py-3 text-[var(--ink-faint)]">
+                <LogoutButton className="text-center py-3 text-[var(--ink-faint)] disabled:opacity-50">
                   Выйти
-                </a>
+                </LogoutButton>
               </>
             ) : (
               <Link href="/auth/login" onClick={close} className="btn-gold w-full">

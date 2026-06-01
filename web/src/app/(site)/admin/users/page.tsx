@@ -1,7 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import TablePager from "@/components/admin/TablePager";
+
+const PER_PAGE = 20;
 
 interface UserData {
   id: string;
@@ -18,8 +20,13 @@ interface UserData {
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   useEffect(() => { loadUsers(); }, []);
+
+  const pageCount = Math.max(1, Math.ceil(users.length / PER_PAGE));
+  const pageNum = Math.min(page, pageCount);
+  const pageItems = users.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
 
   async function loadUsers() {
     const res = await fetch("/api/admin/users");
@@ -76,7 +83,7 @@ export default function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
+                {pageItems.map((u) => (
                   <tr key={u.id} className="border-b border-[var(--line)] hover:bg-[rgba(255,255,255,.02)] transition-colors">
                     <td className="py-3 text-sm">{u.fullName}</td>
                     <td className="py-3 text-sm text-[var(--ink-soft)]">{u.email}</td>
@@ -113,6 +120,7 @@ export default function AdminUsersPage() {
                 ))}
               </tbody>
             </table>
+            <TablePager page={pageNum} pageCount={pageCount} onPage={setPage} />
           </div>
         )}
     </div>

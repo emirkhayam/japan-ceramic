@@ -79,6 +79,7 @@ export async function POST(req: Request) {
     provider: cachedProvider,
   });
   if (cached) {
+    await logVisualization({ userId: user.id, tileSlug: tileKey, tileName, surface, provider: 'cache' });
     return NextResponse.json({
       imageUrl: cached.startsWith('http') ? cached : `${origin}${cached}`,
       durationMs: 0,
@@ -96,6 +97,17 @@ export async function POST(req: Request) {
       provider,
     });
 
+    await logVisualization({
+      userId: user.id,
+      tileSlug: tileKey,
+      tileName,
+      surface,
+      provider: result.provider,
+      promptTokens: result.usage?.promptTokens ?? 0,
+      outputTokens: result.usage?.outputTokens ?? 0,
+      totalTokens: result.usage?.totalTokens ?? 0,
+    });
+
     return NextResponse.json({
       imageUrl: result.imageUrl,
       durationMs: result.durationMs,
@@ -106,6 +118,36 @@ export async function POST(req: Request) {
     console.error('[visualize]', err);
     const message = err instanceof Error ? err.message : 'Generation failed';
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// Пишем лог визуализации. Ошибка лога не должна ломать ответ пользователю.
+async function logVisualization(data: {
+  userId: string;
+  tileSlug: string;
+  tileName: string;
+  surface: 'floor' | 'wall';
+  provider: string;
+  promptTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}) {
+  try {
+    await prisma.visualizationLog.create({
+      data: {
+        userId: data.userId,
+        tileSlug: data.tileSlug,
+        tileName: data.tileName,
+        surface: data.surface,
+        provider: data.provider,
+        promptTokens: data.promptTokens ?? 0,
+        outputTokens: data.outputTokens ?? 0,
+        totalTokens: data.totalTokens ?? 0,
+        success: true,
+      },
+    });
+  } catch (err) {
+    console.error('[visualize] не удалось записать лог:', err);
   }
 }
 

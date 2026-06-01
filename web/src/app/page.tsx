@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getSiteSettings, telHref, waHref, tgHref, resolveMapEmbed } from "@/lib/settings";
 import LandingContent from "@/components/landing/LandingContent";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -12,6 +13,34 @@ function pluralPos(n: number) {
 
 export default async function LandingPage() {
   const user = await getSession();
+  const s = await getSiteSettings();
+  const showrooms = [
+    {
+      name: s.showroomName || "Шоурум",
+      address: s.address,
+      hours: s.hours,
+      mapLink: s.mapLink,
+      mapEmbedUrl: resolveMapEmbed(s.mapEmbedUrl, s.mapLink),
+    },
+    // Второй шоурум — только если задан адрес.
+    ...(s.address2
+      ? [{
+          name: s.showroomName2 || "Шоурум",
+          address: s.address2,
+          hours: s.hours,
+          mapLink: s.mapLink2,
+          mapEmbedUrl: resolveMapEmbed(null, s.mapLink2),
+        }]
+      : []),
+  ];
+  const contacts = {
+    phone: s.phone,
+    phoneHref: telHref(s.phone) ?? null,
+    email: s.email,
+    telegram: tgHref(s.telegram) ?? null,
+    whatsapp: waHref(s.whatsapp) ?? null,
+    showrooms,
+  };
 
   // Реальные коллекции для блока «Пространства» на главной (опубликованные и непустые).
   const featuredRaw = await prisma.collection.findMany({
@@ -41,6 +70,7 @@ export default async function LandingPage() {
         <LandingContent
           user={user ? { fullName: user.fullName, role: user.role } : null}
           collections={collections}
+          contacts={contacts}
         />
       </main>
       <Footer />

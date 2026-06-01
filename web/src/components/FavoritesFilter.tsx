@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import FavoriteButton from "@/components/FavoriteButton";
+import TablePager from "@/components/admin/TablePager";
+
+const PER_PAGE = 18;
 
 type FavoriteItem = {
   id: string;
@@ -17,6 +20,8 @@ type FavoriteItem = {
 
 export default function FavoritesFilter({ favorites }: { favorites: FavoriteItem[] }) {
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [search]);
 
   const filtered = favorites.filter((fav) => {
     if (!search) return true;
@@ -26,6 +31,10 @@ export default function FavoritesFilter({ favorites }: { favorites: FavoriteItem
       (fav.product.collection && fav.product.collection.toLowerCase().includes(q))
     );
   });
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const pageNum = Math.min(page, pageCount);
+  const pageItems = filtered.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
 
   return (
     <>
@@ -38,8 +47,9 @@ export default function FavoritesFilter({ favorites }: { favorites: FavoriteItem
       />
 
       {filtered.length > 0 ? (
+        <>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
-          {filtered.map((fav) => (
+          {pageItems.map((fav) => (
             <div
               key={fav.id}
               className="group relative aspect-[3/3.5] overflow-hidden border border-[var(--line)]"
@@ -70,6 +80,8 @@ export default function FavoritesFilter({ favorites }: { favorites: FavoriteItem
             </div>
           ))}
         </div>
+        <TablePager page={pageNum} pageCount={pageCount} onPage={setPage} />
+        </>
       ) : (
         <div className="text-center py-16 text-[var(--ink-mute)]">
           Ничего не найдено

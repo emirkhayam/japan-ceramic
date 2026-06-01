@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { clearAuthCookie } from "@/lib/auth";
 
-export async function GET() {
-  const response = NextResponse.redirect(new URL("/", process.env.NEXTAUTH_URL || "http://localhost:3000"));
+// Только POST: GET-ссылку на logout можно было бы вызвать сторонним ресурсом (CSRF).
+export async function POST() {
+  const response = NextResponse.json({ ok: true });
   response.headers.set("Set-Cookie", clearAuthCookie()["Set-Cookie"]);
   return response;
 }

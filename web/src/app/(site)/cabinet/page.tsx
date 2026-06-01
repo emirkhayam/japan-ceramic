@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import CreateProjectForm from "@/components/CreateProjectForm";
+import LogoutButton from "@/components/LogoutButton";
 
 export default async function CabinetPage() {
   const user = await getSession();
@@ -30,9 +31,9 @@ export default async function CabinetPage() {
             </h2>
             <p className="text-[14px] text-[var(--ink-mute)]">{user.company || "Дизайнер"}</p>
           </div>
-          <a href="/api/auth/logout" className="text-[12px] px-4 py-2 border border-[var(--line)] rounded-md text-[var(--ink-faint)] hover:text-[var(--ink-soft)] hover:border-[var(--line-2)] transition-all duration-200 cursor-pointer mt-2">
+          <LogoutButton className="text-[12px] px-4 py-2 border border-[var(--line)] rounded-md text-[var(--ink-faint)] hover:text-[var(--ink-soft)] hover:border-[var(--line-2)] transition-all duration-200 cursor-pointer mt-2 disabled:opacity-50">
             Выйти
-          </a>
+          </LogoutButton>
         </div>
 
         {/* Stats */}

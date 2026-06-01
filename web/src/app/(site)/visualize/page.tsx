@@ -8,6 +8,13 @@ import { VisualizerLoader } from '@/components/VisualizerLoader';
 import { Sparkles, Download, MessageCircle, ArrowLeft, AlertCircle, RotateCcw, Camera, Check } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
+// Локальный (client-safe) аналог waHref — не импортируем из lib/settings,
+// т.к. тот модуль тянет prisma (server-only).
+function waLink(wa: string | null | undefined): string | null {
+  if (!wa) return null;
+  return wa.startsWith("http") ? wa : `https://wa.me/${wa.replace(/[^\d]/g, "")}`;
+}
+
 type Surface = 'floor' | 'wall';
 type Stage = 'idle' | 'generating' | 'result' | 'error';
 
@@ -22,6 +29,7 @@ function VisualizePageInner() {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultMeta, setResultMeta] = useState<{ provider: string; durationMs: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<{ whatsapp: string | null; mapLink: string | null; address: string | null } | null>(null);
 
   // Pre-select tile from URL param
   useEffect(() => {
@@ -34,6 +42,14 @@ function VisualizePageInner() {
       })
       .catch(() => {});
   }, [initialSlug]);
+
+  // Контакты сайта (WhatsApp/адрес/2ГИС) — из настроек, а не хардкод.
+  useEffect(() => {
+    fetch("/api/site-contacts")
+      .then((r) => r.json())
+      .then((data) => setContacts(data.settings))
+      .catch(() => {});
+  }, []);
 
   const canGenerate = photo && selectedTile && stage !== 'generating';
 
@@ -155,14 +171,21 @@ function VisualizePageInner() {
                 >
                   <Download size={14} /> Скачать
                 </a>
-                <a
-                  href={`https://wa.me/996503337733?text=${encodeURIComponent(`Здравствуйте! Интересует плитка ${selectedTile?.name}. Можно образец?`)}`}
-                  target="_blank"
-                  rel="noopener"
-                  className="btn-gold !py-2 !px-3 text-sm"
-                >
-                  <MessageCircle size={14} /> Заявка
-                </a>
+                {(() => {
+                  const wa = waLink(contacts?.whatsapp);
+                  const text = encodeURIComponent(`Здравствуйте! Интересует плитка ${selectedTile?.name}. Можно образец?`);
+                  const href = wa ? `${wa}${wa.includes("?") ? "&" : "?"}text=${text}` : "/#contacts";
+                  return (
+                    <a
+                      href={href}
+                      target={wa ? "_blank" : undefined}
+                      rel={wa ? "noopener" : undefined}
+                      className="btn-gold !py-2 !px-3 text-sm"
+                    >
+                      <MessageCircle size={14} /> Заявка
+                    </a>
+                  );
+                })()}
               </div>
             </div>
 
@@ -184,14 +207,16 @@ function VisualizePageInner() {
               <p className="mt-1 text-sm text-mist-400">
                 Заберите образец этой плитки в шоуруме — почувствуете текстуру руками.
               </p>
-              <a
-                href="https://2gis.kg/bishkek/firm/70000001100637803"
-                target="_blank"
-                rel="noopener"
-                className="mt-3 inline-block text-sm text-gold-400 hover:underline"
-              >
-                Юнусалиева 28, Бишкек →
-              </a>
+              {contacts?.mapLink && (
+                <a
+                  href={contacts.mapLink}
+                  target="_blank"
+                  rel="noopener"
+                  className="mt-3 inline-block text-sm text-gold-400 hover:underline"
+                >
+                  {contacts.address || "Шоурум на карте"} →
+                </a>
+              )}
             </div>
           </aside>
         </div>
