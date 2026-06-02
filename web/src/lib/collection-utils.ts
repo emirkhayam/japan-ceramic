@@ -65,7 +65,6 @@ export function coverageSpecs(cov: Coverage, spaceTag?: string | null, styleTag?
   if (styleTag) specs.push({ label: "Стиль", value: styleTag });
   if (spaceTag) specs.push({ label: "Пространство", value: spaceTag });
   if (cov.categories.length) specs.push({ label: cov.categories.length > 1 ? "Материалы" : "Материал", value: cov.categories.join(", ") });
-  if (cov.formats.length) specs.push({ label: cov.formats.length > 1 ? "Форматы, мм" : "Формат, мм", value: cov.formats.slice(0, 4).join(", ") + (cov.formats.length > 4 ? "…" : "") });
   if (cov.surfaces.length) specs.push({ label: cov.surfaces.length > 1 ? "Поверхности" : "Поверхность", value: cov.surfaces.join(", ") });
   const props: string[] = [];
   if (cov.frost) props.push("Морозостойкая");
