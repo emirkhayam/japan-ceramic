@@ -5,4 +5,5 @@ node_modules/
 *.tsbuildinfo
 next-env.d.ts
 *.mp4
+!web/public/hero-video.mp4
 .vercel
