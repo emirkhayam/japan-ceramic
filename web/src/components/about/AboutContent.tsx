@@ -237,10 +237,18 @@ export default function AboutContent({
           </div>
           <div className="ab-why-grid">
             <div className="ab-why-video ab-reveal">
-              <div className="ab-why-video-ph">
-                <span className="ph-ico"><svg width="80" height="80" viewBox="0 0 80 80" fill="none"><path d="M40 8L71 26v28L40 72 9 54V26L40 8Z" stroke="currentColor" strokeWidth="1.2" /><path d="M40 8v32M40 40L9 26M40 40l31-14M40 40v32" stroke="currentColor" strokeWidth="1.2" opacity=".65" /></svg></span>
-                <span className="ph-tx">Видео-анимация<br />сборка 3D-комнаты</span>
-              </div>
+              <video
+                className="ab-why-video-el"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                poster="/room-assembly-poster.jpg"
+              >
+                <source src="/room-assembly.mp4" type="video/mp4" />
+              </video>
+              <span className="ab-why-video-tag">Сборка 3D-комнаты</span>
             </div>
             <div className="ab-why-list">
               {[
@@ -390,6 +398,9 @@ const aboutStyles = `
   .ab-why{background:var(--bg)}
   .ab-why-grid{display:grid;grid-template-columns:1fr 1.05fr;gap:50px;align-items:stretch}
   .ab-why-video{position:relative;border-radius:5px;overflow:hidden;min-height:486px;border:1px solid var(--line-2);background:linear-gradient(160deg,var(--bg-3),var(--bg));box-shadow:0 40px 80px -54px rgba(0,0,0,.9)}
+  .ab-why-video-el{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+  .ab-why-video::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,transparent 55%,rgba(8,10,15,.55) 100%)}
+  .ab-why-video-tag{position:absolute;left:20px;bottom:18px;z-index:2;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft);padding:6px 12px;border:1px solid var(--line-2);border-radius:999px;background:rgba(8,10,15,.5);backdrop-filter:blur(8px)}
   .ab-why-video-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;text-align:center;padding:32px}
   .ab-why-video-ph::before{content:"";position:absolute;inset:0;opacity:.6;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0 52px,rgba(255,255,255,.03) 52px 54px),repeating-linear-gradient(90deg,transparent 0 52px,rgba(255,255,255,.03) 52px 54px)}
   .ab-why-video-ph .ph-ico{position:relative;color:var(--ink-faint)}

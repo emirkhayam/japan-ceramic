@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { prisma } from "@/lib/db";
 import CatalogSearch from "@/components/CatalogSearch";
 import CatalogFiltersShell from "@/components/CatalogFiltersShell";
@@ -61,16 +62,18 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
   const allCategories = await prisma.category.findMany({ orderBy: { sortOrder: "asc" } });
   const mainCategories = allCategories.filter((c) => !c.parentId);
 
-  const productsRaw = await prisma.product.findMany({
+  // Лёгкая выборка скаляров — для фасетов, фильтрации и сортировки (без изображений и связей).
+  // Изображения тяжёлые, поэтому грузим их ТОЛЬКО для товаров текущей страницы (см. ниже).
+  const productsLite = await prisma.product.findMany({
     where: { isActive: true },
-    include: { images: { orderBy: { sortOrder: "asc" }, take: 2 }, category: true },
+    select: { id: true, name: true, dimensions: true, surface: true, color: true, categoryId: true, collection: true, isNew: true, isPopular: true, createdAt: true },
   });
 
   // Поиск — базовый набор для счётчиков.
   const ql = q?.trim().toLowerCase();
   const base = ql
-    ? productsRaw.filter((p) => [p.name, p.collection, p.color, p.surface, p.dimensions].some((v) => v?.toLowerCase().includes(ql)))
-    : productsRaw;
+    ? productsLite.filter((p) => [p.name, p.collection, p.color, p.surface, p.dimensions].some((v) => v?.toLowerCase().includes(ql)))
+    : productsLite;
 
   // Списки значений для фильтров.
   const countBy = (sel: (p: typeof base[number]) => string | null | undefined) => {
@@ -123,12 +126,20 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
     return a.name.localeCompare(b.name);
   });
 
-  // Пагинация: режем уже отфильтрованный/отсортированный список.
+  // Пагинация по лёгкому списку; изображения подгружаем ТОЛЬКО для товаров текущей страницы.
   // Смена фильтров/сортировки/вида не несёт page (ссылки строятся из current без page) → сброс на 1-ю.
   const totalItems = products.length;
   const pageCount = Math.max(1, Math.ceil(totalItems / PER_PAGE));
   const pageNum = Math.min(Math.max(1, parseInt(page || "1", 10) || 1), pageCount);
-  const pageItems = products.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE);
+  const pageIds = products.slice((pageNum - 1) * PER_PAGE, pageNum * PER_PAGE).map((p) => p.id);
+  const hydrated = await prisma.product.findMany({
+    where: { id: { in: pageIds } },
+    include: { images: { orderBy: { sortOrder: "asc" }, take: 2 }, category: true },
+  });
+  const hydratedById = new Map(hydrated.map((p) => [p.id, p]));
+  const pageItems = pageIds
+    .map((id) => hydratedById.get(id))
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
   // URL c полным набором параметров.
   const build = (m: SP) => {
@@ -293,8 +304,9 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
             {products.length > 0 ? (
               <>
               <div className={isList ? "flex flex-col gap-4" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"}>
-                {pageItems.map((p) => {
+                {pageItems.map((p, i) => {
                   const main = p.images[0]?.imageUrl || "/placeholder-tile.svg";
+                  const eager = pageNum === 1 && i < 4; // первый ряд — приоритетная загрузка (LCP)
                   const sz = parseTileSize(p.dimensions);
                   const isRect = sz ? Math.max(sz.w, sz.h) / Math.min(sz.w, sz.h) >= 1.25 : false;
                   const badges = [
@@ -320,14 +332,14 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                               className="relative overflow-hidden rounded-[3px] border-2 border-black/[.18] shadow-[0_16px_42px_rgba(0,0,0,.26)] transition-transform duration-[600ms] ease-[var(--ease)] group-hover:scale-[1.04]"
                               style={sz && sz.w >= sz.h ? { width: "84%", aspectRatio: `${sz.w}/${sz.h}` } : sz ? { height: "84%", aspectRatio: `${sz.w}/${sz.h}` } : { width: "84%", aspectRatio: "1/1" }}
                             >
-                              <img src={main} alt={p.name} loading="lazy" className="w-full h-full object-cover scale-[1.32]" />
+                              <Image src={main} alt={p.name} fill sizes="(max-width:768px) 50vw, 300px" priority={eager} className="object-cover scale-[1.32]" />
                             </div>
                           </div>
                         ) : (
                           /* Квадратная — крупный план текстуры с зумом, в тонкой обводке. */
                           <>
                             <div className="absolute inset-0 shimmer" />
-                            <img src={main} alt={p.name} loading="lazy" className="relative w-full h-full object-cover scale-[1.32] transition-transform duration-[600ms] ease-[var(--ease)] group-hover:scale-[1.4]" />
+                            <Image src={main} alt={p.name} fill sizes="(max-width:768px) 50vw, 300px" priority={eager} className="object-cover scale-[1.32] transition-transform duration-[600ms] ease-[var(--ease)] group-hover:scale-[1.4]" />
                             <div className="absolute inset-0 border border-white/10 pointer-events-none" />
                           </>
                         )}

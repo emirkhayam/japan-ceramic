@@ -23,6 +23,12 @@ export async function POST(req: Request) {
       { status: 401 },
     );
   }
+  if (user.status !== 'approved') {
+    return NextResponse.json(
+      { error: 'Доступ к визуализатору открывается после одобрения заявки менеджером.' },
+      { status: 403 },
+    );
+  }
 
   let body: Body;
   try {

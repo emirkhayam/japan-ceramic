@@ -15,6 +15,7 @@ model User {
   company        String?
   phone          String?
   role           UserRole          @default(designer)
+  status         UserStatus        @default(pending)
   isActive       Boolean           @default(true)
   createdAt      DateTime          @default(now())
   projects       DesignerProject[]
@@ -65,6 +66,7 @@ model Category {
   children  Category[] @relation("CategoryHierarchy")
   products  Product[]
 
+  @@index([parentId])
   @@map("categories")
 }
 
@@ -106,6 +108,11 @@ model Product {
   collectionRef Collection?   @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   projectItems ProjectItem[]
 
+  @@index([isActive])
+  @@index([categoryId])
+  @@index([collectionId])
+  @@index([surface])
+  @@index([color])
   @@map("products")
 }
 
@@ -217,6 +224,12 @@ model ContactLead {
 enum UserRole {
   admin
   designer
+}
+
+enum UserStatus {
+  pending
+  approved
+  rejected
 }
 
 enum ProjectStatus {

@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Clock } from "lucide-react";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 
 export default function RegisterPage() {
   const [errors, setErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -17,10 +19,12 @@ export default function RegisterPage() {
     const email = String(form.get("email") || "").trim();
     const password = String(form.get("password") || "");
     const passwordConfirm = String(form.get("passwordConfirm") || "");
+    const phone = String(form.get("phone") || "").trim();
 
     // Клиентская валидация — до сетевого запроса.
     const clientErrors: string[] = [];
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) clientErrors.push("Введите корректный email.");
+    if (phone.replace(/[^\d]/g, "").length < 6) clientErrors.push("Введите корректный номер телефона.");
     if (password.length < 6) clientErrors.push("Пароль должен быть не короче 6 символов.");
     if (password !== passwordConfirm) clientErrors.push("Пароли не совпадают.");
     if (clientErrors.length > 0) {
@@ -42,13 +46,43 @@ export default function RegisterPage() {
     });
 
     if (res.ok) {
-      window.location.href = "/cabinet";
+      setSubmitted(true);
+      setLoading(false);
       return;
     } else {
       const data = await res.json();
       setErrors(data.errors || [data.error || "Ошибка регистрации"]);
     }
     setLoading(false);
+  }
+
+  if (submitted) {
+    return (
+      <div className="max-w-[460px] mx-auto px-10 py-24 text-center">
+        <div className="w-14 h-14 mx-auto mb-7 rounded-full border border-[var(--color-gold-500)]/40 bg-[rgba(198,154,78,.1)] flex items-center justify-center text-[var(--color-gold-400)]">
+          <Clock size={24} strokeWidth={1.5} />
+        </div>
+        <h2 className="text-3xl font-extralight mb-4">Заявка отправлена</h2>
+        <p className="text-[14.5px] leading-relaxed text-[var(--ink-mute)] mb-8">
+          Менеджер проверит вашу заявку и активирует доступ дизайнера — мы свяжемся с вами.
+          Войти в кабинет и пользоваться AI-визуализацией можно будет после одобрения.
+        </p>
+        <div className="flex flex-col gap-3">
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-2 py-[15px] text-[13px] font-medium bg-[var(--ink)] text-[var(--on-gold)] rounded-sm hover:bg-white transition-all duration-500"
+          >
+            На главную
+          </Link>
+          <Link
+            href="/auth/login"
+            className="inline-flex items-center justify-center gap-2 py-[15px] text-[13px] border border-[var(--line-2)] text-[var(--ink-soft)] rounded-sm hover:text-[var(--ink)] hover:border-[rgba(255,255,255,.4)] transition-all"
+          >
+            Перейти ко входу
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -90,7 +124,7 @@ export default function RegisterPage() {
             <label htmlFor="reg-phone" className="block text-xs font-medium tracking-[.08em] uppercase text-[var(--ink-mute)] mb-2">
               Телефон
             </label>
-            <Input id="reg-phone" type="tel" name="phone" inputMode="tel" placeholder="+7 ..." />
+            <Input id="reg-phone" type="tel" name="phone" inputMode="tel" required placeholder="+996 ..." />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 max-[500px]:grid-cols-1">

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { MessageCircle, ChevronDown, Send, LogIn } from "lucide-react";
 
 export default function HeaderDropdown() {
   const [open, setOpen] = useState(false);
@@ -45,23 +46,20 @@ export default function HeaderDropdown() {
       {/* Trigger */}
       <button
         onClick={toggle}
+        aria-expanded={open}
+        aria-label="Связаться"
         className="group flex items-center gap-2 text-[12px] tracking-[.08em] uppercase font-medium
-          px-4 py-2 rounded-sm cursor-pointer
-          border border-[var(--line-2)]
-          text-[var(--ink-soft)]
-          hover:text-[var(--ink)] hover:border-[rgba(255,255,255,.28)]
+          px-[18px] py-2 rounded-sm cursor-pointer
+          border border-[rgba(198,154,78,.4)]
+          text-[var(--color-gold-400)] bg-[rgba(198,154,78,.06)]
+          hover:bg-[var(--color-gold-500)] hover:text-[#0a0d12] hover:border-[var(--color-gold-500)]
+          hover:shadow-[0_10px_26px_-10px_rgba(198,154,78,.55)]
           active:scale-[.97]
-          transition-all duration-200"
+          transition-all duration-300"
       >
-        <svg
-          width="15" height="15" viewBox="0 0 15 15" fill="none"
-          stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"
-          className="opacity-50 group-hover:opacity-80 transition-opacity duration-200"
-        >
-          <circle cx="7.5" cy="7.5" r="6" />
-          <path d="M4.5 6.2L7.5 9l3-2.8" />
-        </svg>
+        <MessageCircle size={14} strokeWidth={1.8} className="transition-transform duration-300 group-hover:scale-110" />
         Связаться
+        <ChevronDown size={13} strokeWidth={2} className={`transition-transform duration-300 ${open ? "rotate-180" : ""}`} />
       </button>
 
       {/* Dropdown panel */}
@@ -78,7 +76,7 @@ export default function HeaderDropdown() {
           <div
             className="overflow-hidden rounded-lg"
             style={{
-              background: "rgba(10,13,18,.88)",
+              background: "rgba(10,13,18,.93)",
               backdropFilter: "blur(24px) saturate(1.4)",
               border: "1px solid rgba(255,255,255,.1)",
               boxShadow: "0 16px 48px -8px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04) inset",
@@ -107,10 +105,7 @@ export default function HeaderDropdown() {
                     group-hover/item:bg-[rgba(198,154,78,.18)]
                     transition-colors duration-200"
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="1.5" y="3" width="13" height="10" rx="2" />
-                    <path d="M1.5 5.5L8 9.5l6.5-4" />
-                  </svg>
+                  <Send size={15} strokeWidth={1.6} />
                 </div>
                 <div>
                   <div className="text-[13px] font-medium text-[var(--ink)] leading-tight">
@@ -139,10 +134,7 @@ export default function HeaderDropdown() {
                     group-hover/item:bg-[rgba(255,255,255,.07)] group-hover/item:text-[var(--ink-soft)]
                     transition-colors duration-200"
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="8" cy="5.5" r="2.5" />
-                    <path d="M3 14c0-2.8 2.2-4.5 5-4.5s5 1.7 5 4.5" />
-                  </svg>
+                  <LogIn size={15} strokeWidth={1.6} />
                 </div>
                 <div>
                   <div className="text-[13px] text-[var(--ink-soft)] group-hover/item:text-[var(--ink)] leading-tight transition-colors duration-200">

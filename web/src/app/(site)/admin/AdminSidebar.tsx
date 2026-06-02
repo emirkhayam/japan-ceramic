@@ -55,6 +55,16 @@ function IconUsers({ className }: { className?: string }) {
   );
 }
 
+function IconApprovals({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7" cy="5.5" r="3" />
+      <path d="M1.5 16c0-3.3 2.5-5.2 5.5-5.2" />
+      <path d="M11.5 11.8l1.6 1.6 3.2-3.4" />
+    </svg>
+  );
+}
+
 function IconBack({ className }: { className?: string }) {
   return (
     <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
@@ -115,12 +125,13 @@ const items = [
   { href: "/admin/categories", label: "Категории", Icon: IconCategories },
   { href: "/admin/leads", label: "Заявки", Icon: IconLeads },
   { href: "/admin/users", label: "Пользователи", Icon: IconUsers },
+  { href: "/admin/approvals", label: "Заявки на регистрацию", Icon: IconApprovals },
   { href: "/admin/visualizations", label: "AI-визуализации", Icon: IconVisualize },
   { href: "/admin/portfolio", label: "Объекты", Icon: IconPortfolio },
   { href: "/admin/settings", label: "Контакты сайта", Icon: IconSettings },
 ];
 
-export function AdminSidebar() {
+export function AdminSidebar({ pendingCount = 0 }: { pendingCount?: number }) {
   const pathname = usePathname();
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
@@ -149,7 +160,12 @@ export function AdminSidebar() {
                 }`}
               >
                 <it.Icon className={active ? "opacity-100" : "opacity-50"} />
-                {it.label}
+                <span className="flex-1">{it.label}</span>
+                {it.href === "/admin/approvals" && pendingCount > 0 && (
+                  <span className="ml-auto min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-[var(--color-gold-500)] text-[var(--on-gold)] text-[10px] font-semibold leading-none">
+                    {pendingCount}
+                  </span>
+                )}
               </Link>
             );
           })}

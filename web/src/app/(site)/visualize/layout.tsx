@@ -8,5 +8,6 @@ export default async function VisualizeLayout({
 }) {
   const user = await getSession();
   if (!user) redirect("/auth/login?from=/visualize");
+  if (user.status !== "approved") redirect("/cabinet");
   return <>{children}</>;
 }

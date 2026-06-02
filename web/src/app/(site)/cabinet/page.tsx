@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { FolderOpen, Heart, FolderPlus } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import CreateProjectForm from "@/components/CreateProjectForm";
@@ -38,7 +39,8 @@ export default async function CabinetPage() {
 
         {/* Stats */}
         <div className="flex gap-3 mb-10">
-          <div className="px-5 py-5 bg-[rgba(255,255,255,.02)] border border-[var(--line)] rounded-lg flex-1 max-w-[180px]">
+          <div className="px-5 py-5 bg-[rgba(255,255,255,.045)] border border-[var(--line-2)] rounded-xl flex-1 max-w-[190px]">
+            <FolderOpen size={18} strokeWidth={1.6} className="text-[var(--color-gold-400)] mb-3" />
             <div className="tabular-nums text-[32px] font-medium leading-none tracking-tight">
               {projects.length}
             </div>
@@ -46,7 +48,8 @@ export default async function CabinetPage() {
               Проектов
             </div>
           </div>
-          <div className="px-5 py-5 bg-[rgba(255,255,255,.02)] border border-[var(--line)] rounded-lg flex-1 max-w-[180px]">
+          <div className="px-5 py-5 bg-[rgba(255,255,255,.045)] border border-[var(--line-2)] rounded-xl flex-1 max-w-[190px]">
+            <Heart size={18} strokeWidth={1.6} className="text-[var(--color-gold-400)] mb-3" />
             <div className="tabular-nums text-[32px] font-medium leading-none tracking-tight">
               {favCount}
             </div>
@@ -84,8 +87,12 @@ export default async function CabinetPage() {
               ))}
             </div>
           ) : (
-            <div className="text-[var(--ink-faint)] text-[13px] py-8 text-center border border-dashed border-[var(--line)] rounded-lg">
-              У вас пока нет проектов. Создайте первый, чтобы собирать коллекции.
+            <div className="flex flex-col items-center text-center gap-3 py-12 border border-dashed border-[var(--line-2)] rounded-xl">
+              <div className="w-11 h-11 rounded-full bg-[rgba(255,255,255,.04)] border border-[var(--line-2)] flex items-center justify-center text-[var(--ink-mute)]">
+                <FolderPlus size={20} strokeWidth={1.5} />
+              </div>
+              <div className="text-[var(--ink-soft)] text-[13.5px]">У вас пока нет проектов</div>
+              <div className="text-[var(--ink-faint)] text-[12.5px] max-w-[280px]">Создайте первый, чтобы собирать коллекции плитки под объект.</div>
             </div>
           )}
         </div>

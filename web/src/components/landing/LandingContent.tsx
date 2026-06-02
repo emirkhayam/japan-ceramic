@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 interface Showroom {
@@ -36,20 +36,9 @@ const ATMO_FALLBACK = [
 ];
 
 export default function LandingContent({ user, collections, contacts }: Props) {
-  const heroVideoRef = useRef<HTMLVideoElement>(null);
-  const [videoLoaded, setVideoLoaded] = useState(false);
   const showrooms = contacts.showrooms.length ? contacts.showrooms : [{ name: "Шоурум", address: null, hours: null, mapLink: null, mapEmbedUrl: null }];
   const [room, setRoom] = useState(0);
   const active = showrooms[Math.min(room, showrooms.length - 1)];
-
-  // Video loaded — handle the case where data is already buffered before
-  // this effect runs (cached video fires loadeddata before listeners attach).
-  useEffect(() => {
-    const v = heroVideoRef.current;
-    if (!v) return;
-    if (v.readyState >= 2) setVideoLoaded(true);
-    v.play().catch(() => {});
-  }, []);
 
   // Scroll reveal
   useEffect(() => {
@@ -195,21 +184,7 @@ export default function LandingContent({ user, collections, contacts }: Props) {
 
       {/* HERO */}
       <section className="hero">
-        <div className="hero-bg">
-          <video
-            ref={heroVideoRef}
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="auto"
-            onLoadedData={() => setVideoLoaded(true)}
-            onCanPlay={() => setVideoLoaded(true)}
-            style={{ opacity: videoLoaded ? 1 : 0, transition: "opacity 0.5s ease" }}
-          >
-            <source src="/hero-video.mp4" type="video/mp4" />
-          </video>
-        </div>
+        <div className="hero-bg" />
         <div className="wrap hero-inner">
           <div className="hero-card">
             <div className="eyebrow reveal">Премиальный керамогранит</div>
@@ -309,18 +284,19 @@ export default function LandingContent({ user, collections, contacts }: Props) {
             {/* AI preview — демо-изображения вместо функциональной дропзоны */}
             <div className="ai-preview-card">
               <div className="ai-preview-icon">
-                <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-                  <path d="M15 20V8M15 8l-5 5M15 8l5 5" stroke="currentColor" strokeWidth="1.3" />
-                  <path d="M5 19v3a2 2 0 002 2h16a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.3" />
+                <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 5l1.8 4.8L21.6 11l-4.8 1.8L15 17.6l-1.8-4.8L8.4 11l4.8-1.2L15 5z" />
+                  <path d="M23.5 18.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z" />
                 </svg>
               </div>
               <h4>AI подберёт плитку для вашего интерьера</h4>
               <p className="ai-preview-sub">Загрузите фото — получите фотореалистичный результат за 15–30 секунд</p>
               <div className="dz-thumbs">
-                <img src="https://images.unsplash.com/photo-1622372738946-62e02505feb3?q=80&w=400&auto=format&fit=crop" alt="" />
-                <img src="https://images.unsplash.com/photo-1707992568921-fa9c40e7ef32?q=80&w=400&auto=format&fit=crop" alt="" />
-                <img src="https://images.unsplash.com/photo-1610659856580-323ec67011f9?q=80&w=400&auto=format&fit=crop" alt="" />
+                <span className="dz-thumb"><img src="/demos/ai-1.jpg" alt="Пример AI-визуализации: тёплый бежевый керамогранит" loading="lazy" /></span>
+                <span className="dz-thumb"><img src="/demos/ai-2.jpg" alt="Пример AI-визуализации: светло-серый мрамор" loading="lazy" /></span>
+                <span className="dz-thumb"><img src="/demos/ai-3.jpg" alt="Пример AI-визуализации: тёмный графит" loading="lazy" /></span>
               </div>
+              <div className="dz-tag">Примеры визуализаций</div>
               <Link href={user ? "/visualize" : "/auth/login?from=/visualize"} className="btn btn-light" style={{ marginTop: 26, width: "100%", justifyContent: "center" }}>
                 {user ? "Открыть AI-визуализацию" : "Войти и попробовать"}
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M1 7.5h12M8 2.5l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
@@ -617,12 +593,16 @@ const landingStyles = `
   .step .num{font-family:var(--font-serif),'Playfair Display',serif;font-size:30px;color:var(--ink-faint);line-height:1;flex:none;width:38px}
   .step .st-body strong{display:block;font-weight:500;font-size:15px;margin-bottom:3px}
   .step .st-body span{font-size:13px;color:var(--ink-mute)}
-  .ai-preview-card{border:1px solid var(--line-2);border-radius:4px;background:rgba(255,255,255,.018);padding:54px 40px;text-align:center;transition:.4s var(--ease);position:relative}
-  .ai-preview-icon{width:78px;height:78px;margin:0 auto 26px;border-radius:50%;border:1px solid var(--line-2);display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.02)}
+  .ai-preview-card{border:1px solid var(--line-2);border-radius:14px;background:linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.02));padding:48px 40px;text-align:center;transition:.4s var(--ease);position:relative;box-shadow:0 24px 60px -30px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.03) inset}
+  .ai-preview-card::before{content:"";position:absolute;inset:0;border-radius:14px;padding:1px;background:linear-gradient(160deg,rgba(198,154,78,.35),transparent 40%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+  .ai-preview-icon{width:74px;height:74px;margin:0 auto 24px;border-radius:50%;border:1px solid rgba(198,154,78,.4);display:flex;align-items:center;justify-content:center;background:rgba(198,154,78,.1);color:var(--color-gold-400)}
   .ai-preview-card h4{font-weight:300;font-size:21px;margin-bottom:8px}
   .ai-preview-sub{font-size:13px;color:var(--ink-mute)}
-  .dz-thumbs{display:flex;gap:10px;justify-content:center;margin-top:34px}
-  .dz-thumbs img{width:74px;height:54px;object-fit:cover;border-radius:3px;filter:grayscale(.3) brightness(.8);border:1px solid var(--line)}
+  .dz-thumbs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:30px}
+  .dz-thumb{display:block;overflow:hidden;border-radius:8px;border:1px solid var(--line-2);aspect-ratio:4/3;position:relative}
+  .dz-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .5s var(--ease)}
+  .dz-thumb:hover img{transform:scale(1.08)}
+  .dz-tag{margin-top:14px;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-faint)}
 
   .atmo{background:linear-gradient(180deg,var(--bg-2),var(--bg))}
   .atmo .rail{margin-top:46px}

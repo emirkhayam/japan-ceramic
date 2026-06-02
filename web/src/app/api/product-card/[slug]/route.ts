@@ -29,8 +29,9 @@ export async function GET(
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${safe}.pdf"; filename*=UTF-8''${utf8}`,
-      // Без кэша — PDF всегда собирается заново из актуальных данных товара.
-      "Cache-Control": "no-store, must-revalidate",
+      // Кэшируем карточку — данные товара меняются редко. CDN держит сутки,
+      // отдаёт устаревшую копию неделю, пока пересобирает в фоне.
+      "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
     },
   });
 }
