@@ -184,7 +184,11 @@ export default function LandingContent({ user, collections, contacts }: Props) {
 
       {/* HERO */}
       <section className="hero">
-        <div className="hero-bg" />
+        <div className="hero-bg">
+          <video autoPlay muted loop playsInline preload="auto">
+            <source src="/hero-video.mp4" type="video/mp4" />
+          </video>
+        </div>
         <div className="wrap hero-inner">
           <div className="hero-card">
             <div className="eyebrow reveal">Премиальный керамогранит</div>
