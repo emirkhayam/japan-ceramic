@@ -122,7 +122,7 @@ export default function AboutContent({
       },
       { threshold: 0.16 }
     );
-    document.querySelectorAll(".ab-reveal,.ab-stile,.ab-tl-track").forEach((el) => io.observe(el));
+    document.querySelectorAll(".ab-reveal,.ab-stile").forEach((el) => io.observe(el));
     return () => io.disconnect();
   }, []);
 
@@ -149,48 +149,6 @@ export default function AboutContent({
     );
     document.querySelectorAll(".ab-count").forEach((el) => cio.observe(el));
     return () => cio.disconnect();
-  }, []);
-
-  // Timeline
-  useEffect(() => {
-    const track = document.getElementById("abTlTrack") as HTMLElement | null;
-    const prev = document.getElementById("abTlPrev") as HTMLButtonElement | null;
-    const next = document.getElementById("abTlNext") as HTMLButtonElement | null;
-    const bar = document.getElementById("abTlBar") as HTMLElement | null;
-    if (!track || !prev || !next || !bar) return;
-
-    const getStep = () => {
-      const c = track.querySelector(".ab-tl-card") as HTMLElement | null;
-      return c ? c.offsetWidth + 14 : 340;
-    };
-    const upd = () => {
-      const max = track.scrollWidth - track.clientWidth;
-      const p = max > 0 ? track.scrollLeft / max : 0;
-      const barW = Math.max(14, (track.clientWidth / track.scrollWidth) * 100);
-      bar.style.width = barW + "%";
-      bar.style.left = (p * (100 - barW)) + "%";
-      prev.disabled = track.scrollLeft < 6;
-      next.disabled = track.scrollLeft > max - 6;
-    };
-    prev.addEventListener("click", () => track.scrollBy({ left: -getStep(), behavior: "smooth" }));
-    next.addEventListener("click", () => track.scrollBy({ left: getStep(), behavior: "smooth" }));
-    track.addEventListener("scroll", upd, { passive: true });
-    window.addEventListener("resize", upd);
-
-    let down = false, sx = 0, sl = 0, moved = false;
-    track.addEventListener("pointerdown", (e) => { down = true; moved = false; sx = e.clientX; sl = track.scrollLeft; track.classList.add("drag"); });
-    const onPtrMove = (e: PointerEvent) => { if (!down) return; const dx = e.clientX - sx; if (Math.abs(dx) > 4) moved = true; track.scrollLeft = sl - dx; };
-    const onPtrUp = () => { down = false; track.classList.remove("drag"); };
-    window.addEventListener("pointermove", onPtrMove);
-    window.addEventListener("pointerup", onPtrUp);
-    track.addEventListener("click", (e) => { if (moved) e.preventDefault(); }, true);
-    setTimeout(upd, 60);
-
-    return () => {
-      window.removeEventListener("pointermove", onPtrMove);
-      window.removeEventListener("pointerup", onPtrUp);
-      window.removeEventListener("resize", upd);
-    };
   }, []);
 
   return (
@@ -288,7 +246,7 @@ export default function AboutContent({
               {[
                 { n: "01", title: "Японское качество без компромиссов", desc: "Многоступенчатый контроль на каждом этапе — от проверки сырья до геометрии и тона готовой плиты." },
                 { n: "02", title: "Честная цена без посредников", desc: "Прямые поставки с фабрик Японии: прозрачные цены и предсказуемые сроки на каждом проекте." },
-                { n: "03", title: "Большой выбор — 60+ моделей", desc: "Керамогранит, клинкер и мозаика — решение под фасад, интерьер и акцентные детали." },
+                { n: "03", title: "Большой выбор — 150+ моделей", desc: "Керамогранит, клинкер и мозаика — решение под фасад, интерьер и акцентные детали." },
                 { n: "04", title: "Натуральный и долговечный материал", desc: "Экологичная керамика, которая сохраняет внешний вид и характеристики десятилетиями." },
                 { n: "05", title: "Экспертное сопровождение", desc: "Помогаем с подбором, расчётом и AI-визуализацией — от идеи до укладки на объекте." },
               ].map((item, idx) => (
@@ -302,39 +260,6 @@ export default function AboutContent({
         </div>
       </section>
 
-      {/* TIMELINE */}
-      <section className="ab-sec ab-timeline">
-        <div className="ab-wrap">
-          <div className="ab-tl-head">
-            <div>
-              <div className="ab-eyebrow ab-reveal" style={{ marginBottom: 22 }}>Путь компании</div>
-              <h2 className="ab-reveal" data-d="1" style={{ fontSize: "clamp(32px,4vw,52px)" }}>Каталог собирался<br />плита за плитой</h2>
-            </div>
-            <div className="ab-tl-nav ab-reveal" data-d="2">
-              <button id="abTlPrev" aria-label="Назад"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M15 8H1M6 3L1 8l5 5" stroke="currentColor" strokeWidth="1.4" /></svg></button>
-              <button id="abTlNext" aria-label="Вперёд"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 8h14M10 3l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg></button>
-            </div>
-          </div>
-          <div className="ab-tl-track" id="abTlTrack">
-            {[
-              { year: "2014", title: "Основание Japan Ceramic", desc: "Старт компании и первые поставки японского керамогранита для частных и коммерческих объектов.", i: "01 / 05" },
-              { year: "2017", title: "Прямые контракты с фабриками", desc: "Переход на прямые поставки с производств Японии — без посредников, с контролем качества и сроков.", i: "02 / 05" },
-              { year: "2019", title: "Открытие шоурума", desc: "Появилось пространство, где архитекторы и заказчики могут увидеть и почувствовать фактуру вживую.", i: "03 / 05" },
-              { year: "2022", title: "Клинкер и мозаика в каталоге", desc: "Ассортимент расширился до трёх направлений — добавились фактурный клинкер и декоративная мозаика.", i: "04 / 05" },
-              { year: "2024", title: "60+ моделей и AI-визуализация", desc: "Каталог вырос до более чем 60 моделей, а подбор плитки дополнила AI-визуализация интерьеров.", i: "05 / 05" },
-            ].map((c) => (
-              <article key={c.year} className="ab-tl-card ab-bevel tile-b">
-                <span className="ab-tl-i ab-serif">{c.i}</span>
-                <div className="ab-tl-year ab-serif">{c.year}</div>
-                <h3>{c.title}</h3>
-                <p>{c.desc}</p>
-              </article>
-            ))}
-          </div>
-          <div className="ab-tl-bar"><i id="abTlBar" /></div>
-        </div>
-      </section>
-
       {/* STATS */}
       <section className="ab-sec ab-stats-sec">
         <div className="ab-wrap">
@@ -344,7 +269,7 @@ export default function AboutContent({
           </div>
           <div className="ab-stiles">
             {[
-              { count: 60, suffix: "+", label: "Моделей керамогранита, клинкера и мозаики", cls: "tile-a" },
+              { count: 150, suffix: "+", label: "Моделей керамогранита, клинкера и мозаики", cls: "tile-a" },
               { count: 10, suffix: "+", label: "Лет на рынке отделочных материалов", cls: "tile-b" },
               { count: 3, suffix: "", label: "Направления: керамогранит, клинкер, мозаика", cls: "tile-b" },
               { count: 100, suffix: "%", label: "Продукции произведено на фабриках Японии", cls: "tile-a" },
@@ -363,7 +288,7 @@ export default function AboutContent({
         <div className="ab-wrap">
           <div className="ab-eyebrow ab-reveal" style={{ justifyContent: "center" }}>Каталог Japan Ceramic</div>
           <h2 className="ab-reveal" data-d="1">Соберите своё пространство<br />из японской керамики</h2>
-          <p className="ab-reveal" data-d="2">Откройте каталог из более чем 60 моделей или запишитесь в шоурум, чтобы увидеть фактуру вживую.</p>
+          <p className="ab-reveal" data-d="2">Откройте каталог из более чем 150 моделей или запишитесь в шоурум, чтобы увидеть фактуру вживую.</p>
           <div className="ab-cta-btns ab-reveal" data-d="2">
             <Link href="/catalog" className="ab-btn ab-btn-light">
               Смотреть каталог
@@ -506,8 +431,8 @@ const aboutStyles = `
   .ab-stile{border-radius:3px;padding:34px 28px;border:1px solid var(--line);min-height:182px;display:flex;flex-direction:column;justify-content:space-between;opacity:0;transform:translateY(34px) scale(.96);transition:opacity .8s var(--ease),transform .8s var(--ease),border-color .4s}
   .ab-stile.in{opacity:1;transform:none}
   .ab-stile:hover{border-color:var(--line-2)}
-  .ab-stile-num{font-family:var(--font-serif),'Playfair Display',serif;font-size:clamp(46px,4.6vw,62px);font-weight:500;line-height:1}
-  .ab-stile-num em{font-style:normal;color:var(--accent)}
+  .ab-stile-num{font-family:var(--font-sans),'Inter',system-ui,sans-serif;font-size:clamp(50px,5.2vw,72px);font-weight:700;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum" 1,"lnum" 1}
+  .ab-stile-num em{font-style:normal;font-weight:600;color:var(--accent);margin-left:3px}
   .ab-stile-lb{font-size:13px;color:var(--ink-mute);line-height:1.45}
 
   .ab-cta{position:relative;overflow:hidden;border-top:1px solid var(--line);background:var(--bg);padding:108px 0;text-align:center}
