@@ -568,7 +568,7 @@ const landingStyles = `
   .rail::-webkit-scrollbar{display:none}
   .cat3d-stage{position:relative;margin-top:74px;display:flex;justify-content:center;align-items:flex-end;gap:clamp(2px,1.2vw,20px);perspective:2000px;perspective-origin:50% 33%;padding:48px 0 32px}
   .cat3d-stage::before{content:"";position:absolute;left:50%;top:6%;width:780px;height:500px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse,rgba(120,150,205,.15),transparent 68%)}
-  .cat3d-stage::after{content:"";position:absolute;left:50%;bottom:2px;width:90%;height:70px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse 52% 100% at 50% 100%,rgba(150,175,225,.12),transparent 72%)}
+  .cat3d-stage::after{content:"";position:absolute;left:50%;bottom:-90px;width:96%;height:260px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse 60% 100% at 50% 38%,rgba(150,175,225,.11),transparent 75%)}
   .cat3d{position:relative;flex:0 1 374px;min-width:0;aspect-ratio:67/100;transform-style:preserve-3d}
   .cat3d-box{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .5s var(--ease);cursor:pointer;will-change:transform}
   .cat3d[data-i="0"] .cat3d-box{transform:rotateY(31deg) translateZ(-46px)}
@@ -603,7 +603,7 @@ const landingStyles = `
   .cat3d-box:hover .cat3d-link .ll{width:82px;background:var(--color-gold-500)}
   .cat3d-box:hover .cat3d-link svg{transform:translateX(4px)}
   .cat3d-floor{position:absolute;left:-9%;right:-9%;bottom:-5%;height:104px;z-index:-1;background:radial-gradient(ellipse 56% 100% at 50% 100%,rgba(0,0,0,.92),transparent 74%);filter:blur(13px)}
-  .cat3d[data-i="1"] .cat3d-floor{background:radial-gradient(ellipse 62% 100% at 50% 100%,rgba(0,0,0,.92),transparent 72%),radial-gradient(ellipse 98% 66% at 50% 92%,rgba(122,150,206,.2),transparent 70%)}
+  .cat3d[data-i="1"] .cat3d-floor{background:radial-gradient(ellipse 62% 100% at 50% 100%,rgba(0,0,0,.92),transparent 72%),radial-gradient(ellipse 98% 80% at 50% 78%,rgba(122,150,206,.18),transparent 76%)}
   .cat3d-caption{text-align:center;margin-top:58px;font-size:13.5px;color:var(--ink-mute);letter-spacing:.015em}
 
   .ai{background:var(--bg-2);overflow:hidden}
