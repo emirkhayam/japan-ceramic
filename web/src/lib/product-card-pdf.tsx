@@ -49,9 +49,12 @@ function prettyFormat(dimensions: string | null): string | null {
 }
 
 // Уменьшаем картинку через Supabase image transform, чтобы PDF не весил десятки МБ.
+// ВАЖНО: нужен resize=contain + обе стороны (width и height) — иначе при одном
+// width Supabase не сохраняет пропорции (сжимает только ширину, высоту оставляет
+// исходной) и картинка превращается в кривую вытянутую полоску.
 function pdfImageUrl(url: string | undefined): string | undefined {
   if (url && url.includes("/storage/v1/object/public/")) {
-    return url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/") + "?width=680&quality=72";
+    return url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/") + "?width=900&height=900&resize=contain&quality=72";
   }
   return url;
 }
