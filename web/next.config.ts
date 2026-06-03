@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "images.unsplash.com" },
     ],
     formats: ["image/avif", "image/webp"],
+    // Кэшируем оптимизированные варианты 30 дней — чтобы не переоптимизировать
+    // исходники повторно (по умолчанию было 4 часа).
+    minimumCacheTTL: 2592000,
     // Локальный placeholder-tile.svg как fallback — разрешаем SVG (только наш ассет).
     dangerouslyAllowSVG: true,
     contentDispositionType: "attachment",

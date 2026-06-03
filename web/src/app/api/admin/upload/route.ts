@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
 import { getSession } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
+
+// Сжатие исходников: ресайз до 2000px + WebP. Тяжёлые фото (10–20 МБ) → ~0.3–0.6 МБ,
+// чтобы next/image не давился оригиналами и каталог не лагал.
+const MAX_DIM = 2000;
+const WEBP_QUALITY = 82;
 
 export async function POST(request: NextRequest) {
   const user = await getSession();
@@ -24,17 +30,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Файл слишком большой (макс. 50MB)" }, { status: 400 });
   }
 
-  const ext = file.name.split(".").pop() || "jpg";
-  const folder = isDocument ? "documents" : "products";
-  const filename = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let buffer: Buffer = Buffer.from(await file.arrayBuffer());
+  let contentType = file.type;
+  let filename: string;
 
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+  if (isDocument) {
+    const ext = file.name.split(".").pop() || "bin";
+    filename = `documents/${stamp}.${ext}`;
+  } else {
+    // Изображения — всегда сжимаем в WebP с ресайзом до 2000px.
+    try {
+      buffer = await sharp(buffer)
+        .rotate() // учесть EXIF-ориентацию
+        .resize({ width: MAX_DIM, height: MAX_DIM, fit: "inside", withoutEnlargement: true })
+        .webp({ quality: WEBP_QUALITY })
+        .toBuffer();
+      contentType = "image/webp";
+      filename = `products/${stamp}.webp`;
+    } catch (e) {
+      console.error("Image compression failed, uploading original:", e);
+      const ext = file.name.split(".").pop() || "jpg";
+      filename = `products/${stamp}.${ext}`;
+    }
+  }
 
   const { error } = await supabaseAdmin.storage
     .from("uploads")
     .upload(filename, buffer, {
-      contentType: file.type,
+      contentType,
       upsert: false,
     });
 

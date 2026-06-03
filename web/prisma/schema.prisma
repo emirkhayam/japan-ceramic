@@ -137,11 +137,12 @@ model Collection {
 }
 
 model ProductImage {
-  id        String  @id @default(uuid())
-  productId String
-  imageUrl  String
-  isPrimary Boolean @default(false)
-  sortOrder Int     @default(0)
+  id          String  @id @default(uuid())
+  productId   String
+  imageUrl    String
+  originalUrl String? // исходный (несжатый) URL — бэкап для отката после оптимизации
+  isPrimary   Boolean @default(false)
+  sortOrder   Int     @default(0)
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_images")
