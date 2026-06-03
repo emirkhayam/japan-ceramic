@@ -235,12 +235,12 @@ export default function LandingContent({ user, collections, contacts }: Props) {
           </div>
           <div className="cat3d-stage reveal" data-d="1" id="cat3dStage">
             {[
-              { i: 0, img: "https://images.unsplash.com/photo-1747696766706-5485b39bf358?q=80&w=1100&auto=format&fit=crop", title: "Керамогранит", desc: "Крупноформатные решения для стен и полов", idx: "01" },
-              { i: 1, img: "https://images.unsplash.com/photo-1625008668243-e10fa6121030?q=80&w=1100&auto=format&fit=crop", title: "Клинкер", desc: "Прочность, фактура и архитектурный характер", idx: "02" },
-              { i: 2, img: "https://images.unsplash.com/photo-1703867110039-dc2ad34be121?q=80&w=1100&auto=format&fit=crop", title: "Мозаика", desc: "Детали, которые создают уникальный стиль", idx: "03" },
+              { i: 0, img: "https://images.unsplash.com/photo-1747696766706-5485b39bf358?q=80&w=1100&auto=format&fit=crop", title: "Керамогранит", desc: "Крупноформатные решения для стен и полов", idx: "01", slug: "keramogranit" },
+              { i: 1, img: "https://images.unsplash.com/photo-1625008668243-e10fa6121030?q=80&w=1100&auto=format&fit=crop", title: "Клинкер", desc: "Прочность, фактура и архитектурный характер", idx: "02", slug: "clinker" },
+              { i: 2, img: "https://images.unsplash.com/photo-1703867110039-dc2ad34be121?q=80&w=1100&auto=format&fit=crop", title: "Мозаика", desc: "Детали, которые создают уникальный стиль", idx: "03", slug: "mosaic" },
             ].map((c) => (
               <article key={c.i} className="cat3d" data-i={c.i}>
-                <div className="cat3d-box">
+                <Link href={`/catalog?category=${c.slug}`} className="cat3d-box" aria-label={`${c.title} — смотреть коллекции`}>
                   <span className="cat3d-edge cat3d-edge-l" />
                   <span className="cat3d-edge cat3d-edge-r" />
                   <div className="cat3d-inner">
@@ -252,13 +252,13 @@ export default function LandingContent({ user, collections, contacts }: Props) {
                       <span className="cat3d-line" />
                       <h3 className="cat3d-title">{c.title}</h3>
                       <p className="cat3d-desc">{c.desc}</p>
-                      <Link href="/catalog" className="cat3d-link">
+                      <span className="cat3d-link">
                         Смотреть коллекции<span className="ll" />
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h11M7.5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
-                      </Link>
+                      </span>
                     </div>
                   </div>
-                </div>
+                </Link>
                 <span className="cat3d-floor" />
               </article>
             ))}
@@ -550,7 +550,7 @@ const landingStyles = `
   .cat3d-stage::before{content:"";position:absolute;left:50%;top:6%;width:780px;height:500px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse,rgba(120,150,205,.15),transparent 68%)}
   .cat3d-stage::after{content:"";position:absolute;left:50%;bottom:-90px;width:96%;height:260px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse 60% 100% at 50% 38%,rgba(150,175,225,.11),transparent 75%)}
   .cat3d{position:relative;flex:0 1 374px;min-width:0;aspect-ratio:67/100;transform-style:preserve-3d}
-  .cat3d-box{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .5s var(--ease);cursor:pointer;will-change:transform}
+  .cat3d-box{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .5s var(--ease);cursor:pointer;will-change:transform;display:block;text-decoration:none;color:inherit}
   .cat3d[data-i="0"] .cat3d-box{transform:rotateY(31deg) translateZ(-46px)}
   .cat3d[data-i="1"] .cat3d-box{transform:translateZ(60px) translateY(-34px) scale(1.05)}
   .cat3d[data-i="2"] .cat3d-box{transform:rotateY(-31deg) translateZ(-46px)}
