@@ -240,7 +240,7 @@ export default function LandingContent({ user, collections, contacts }: Props) {
               { i: 2, img: "https://images.unsplash.com/photo-1703867110039-dc2ad34be121?q=80&w=1100&auto=format&fit=crop", title: "Мозаика", desc: "Детали, которые создают уникальный стиль", idx: "03", slug: "mosaic" },
             ].map((c) => (
               <article key={c.i} className="cat3d" data-i={c.i}>
-                <Link href={`/catalog?category=${c.slug}`} className="cat3d-box" aria-label={`${c.title} — смотреть коллекции`}>
+                <div className="cat3d-box">
                   <span className="cat3d-edge cat3d-edge-l" />
                   <span className="cat3d-edge cat3d-edge-r" />
                   <div className="cat3d-inner">
@@ -257,8 +257,10 @@ export default function LandingContent({ user, collections, contacts }: Props) {
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h11M7.5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
                       </span>
                     </div>
+                    {/* Прозрачный оверлей-ссылка поверх всей лицевой грани — клик по любой части карточки ведёт в каталог на нужную секцию */}
+                    <Link href={`/catalog?category=${c.slug}`} className="cat3d-hit" aria-label={`${c.title} — смотреть коллекции`} />
                   </div>
-                </Link>
+                </div>
                 <span className="cat3d-floor" />
               </article>
             ))}
@@ -550,7 +552,8 @@ const landingStyles = `
   .cat3d-stage::before{content:"";position:absolute;left:50%;top:6%;width:780px;height:500px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse,rgba(120,150,205,.15),transparent 68%)}
   .cat3d-stage::after{content:"";position:absolute;left:50%;bottom:-90px;width:96%;height:260px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse 60% 100% at 50% 38%,rgba(150,175,225,.11),transparent 75%)}
   .cat3d{position:relative;flex:0 1 374px;min-width:0;aspect-ratio:67/100;transform-style:preserve-3d}
-  .cat3d-box{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .5s var(--ease);cursor:pointer;will-change:transform;display:block;text-decoration:none;color:inherit}
+  .cat3d-box{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .5s var(--ease);cursor:pointer;will-change:transform}
+  .cat3d-hit{position:absolute;inset:0;z-index:5;border-radius:inherit}
   .cat3d[data-i="0"] .cat3d-box{transform:rotateY(31deg) translateZ(-46px)}
   .cat3d[data-i="1"] .cat3d-box{transform:translateZ(60px) translateY(-34px) scale(1.05)}
   .cat3d[data-i="2"] .cat3d-box{transform:rotateY(-31deg) translateZ(-46px)}
