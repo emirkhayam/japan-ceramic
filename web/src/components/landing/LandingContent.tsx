@@ -551,7 +551,7 @@ const landingStyles = `
   .cat3d-stage{position:relative;margin-top:74px;display:flex;justify-content:center;align-items:flex-end;gap:clamp(2px,1.2vw,20px);perspective:2000px;perspective-origin:50% 33%;padding:48px 0 32px}
   .cat3d-stage::before{content:"";position:absolute;left:50%;top:6%;width:780px;height:500px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse,rgba(120,150,205,.15),transparent 68%)}
   .cat3d-stage::after{content:"";position:absolute;left:50%;bottom:-90px;width:96%;height:260px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse 60% 100% at 50% 38%,rgba(150,175,225,.11),transparent 75%)}
-  .cat3d{position:relative;flex:0 1 374px;min-width:0;aspect-ratio:67/100;transform-style:preserve-3d}
+  .cat3d{position:relative;flex:0 1 374px;min-width:0;aspect-ratio:67/100;transform-style:preserve-3d;cursor:pointer}
   .cat3d-box{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .5s var(--ease);cursor:pointer;will-change:transform}
   .cat3d-hit{position:absolute;inset:0;z-index:5;border-radius:inherit}
   .cat3d[data-i="0"] .cat3d-box{transform:rotateY(31deg) translateZ(-46px)}
