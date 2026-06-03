@@ -260,7 +260,7 @@ export default function ProductGallery({
 
       {/* Миниатюры */}
       {count > 1 && (
-        <div className="flex gap-2 mt-4 overflow-x-auto" style={{ maxWidth: imgW + PAD_R }}>
+        <div className="flex flex-wrap gap-2 mt-4" style={{ maxWidth: imgW + PAD_R }}>
           {images.map((img, i) => (
             <button
               key={img.id}

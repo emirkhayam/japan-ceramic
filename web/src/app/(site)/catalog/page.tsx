@@ -3,6 +3,7 @@ import Image from "next/image";
 import { prisma } from "@/lib/db";
 import CatalogSearch from "@/components/CatalogSearch";
 import CatalogFiltersShell from "@/components/CatalogFiltersShell";
+import CatalogCategoryFilter from "@/components/CatalogCategoryFilter";
 import Pagination from "@/components/Pagination";
 import { parseTileSize, prettyFormat, glyphStyle } from "@/lib/tile";
 import FormatMiniPreview from "@/components/FormatMiniPreview";
@@ -30,23 +31,29 @@ function plural(n: number) {
   return "товаров";
 }
 
-// Точный оттенок свотча по названию цвета. Возвращает null, если это НЕ цвет
-// (напр. «Металл», «Дерево») или название незнакомо — тогда не выдумываем,
-// а показываем обычный чекбокс.
-function colorHex(name: string): string | null {
-  const n = name.toLowerCase();
-  const map: [string, string][] = [
-    ["бел", "#e9e7e1"], ["крем", "#e6dcc8"], ["слонов", "#ece7da"],
-    ["золот", "#cead78"], ["песоч", "#cbb27d"], ["беж", "#d0bb98"],
-    ["олив", "#6f7144"],
-    ["тёмно-сер", "#43464b"], ["темно-сер", "#43464b"], ["светло-сер", "#c2c4c7"],
-    ["граф", "#3a3d42"], ["антрац", "#2f3236"], ["сер", "#8b8e92"],
-    ["чёрн", "#15171b"], ["черн", "#15171b"],
-    ["терракот", "#9c5b3b"], ["шокол", "#4e3a2a"], ["корич", "#6c4f39"],
-    ["голуб", "#7d93b5"], ["син", "#3a4a72"], ["зел", "#4a6052"],
-  ];
-  for (const [k, v] of map) if (n.includes(k)) return v;
-  return null;
+// Группы тонов для фильтра «Цвет». Дробные названия цветов сводятся к 5 группам,
+// чтобы фильтр не был перегружен. Порядок проверки важен (дерево и серые — раньше тёмных/светлых).
+type ToneKey = "light" | "dark" | "neutral" | "wood" | "color";
+const TONES: { key: ToneKey; label: string; swatch: string }[] = [
+  { key: "light", label: "Светлые тона", swatch: "#e6dcc8" },
+  { key: "dark", label: "Тёмные тона", swatch: "#2f3236" },
+  { key: "neutral", label: "Нейтральные", swatch: "#8b8e92" },
+  { key: "wood", label: "Дерево", swatch: "#9c6b3f" },
+  { key: "color", label: "Цветные", swatch: "linear-gradient(135deg,#4a7a6a,#3a4a72)" },
+];
+const TONE_RULES: [ToneKey, string[]][] = [
+  ["wood", ["дерев", "wood", "ёлоч", "елоч", "дуб", "орех", "венге", "тик", "сосн", "ясен"]],
+  ["neutral", ["сер", "графит", "антрац", "бетон", "металл", "стальн", "пепельн", "облачн"]],
+  ["dark", ["чёрн", "черн", "тёмн", "темн", "шокол", "корич", "мокко", "кофе", "эспрессо"]],
+  ["light", ["бел", "беж", "крем", "слонов", "молочн", "песоч", "светл", "золот", "ваниль", "айвори"]],
+  ["color", ["зел", "син", "голуб", "красн", "терракот", "олив", "охр", "жёлт", "желт", "роз", "бордо"]],
+];
+// Незнакомые названия камня по умолчанию относим к нейтральным.
+function colorTone(name?: string | null): ToneKey | null {
+  const n = name?.trim().toLowerCase();
+  if (!n) return null;
+  for (const [tone, keys] of TONE_RULES) if (keys.some((k) => n.includes(k))) return tone;
+  return "neutral";
 }
 
 const parseList = (v?: string) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : []);
@@ -82,20 +89,22 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
     return m;
   };
   const formatMap = countBy((p) => p.dimensions);
-  const surfaceMap = countBy((p) => p.surface);
   const formats = [...formatMap.keys()].sort((a, b) => (parseTileSize(a)?.w ?? 0) - (parseTileSize(b)?.w ?? 0));
-  const surfaces = [...surfaceMap.keys()].sort((a, b) => a.localeCompare(b));
-  // Цвета — объединяем дубли без учёта регистра. key = lowercase (в URL), label = с заглавной.
-  const colorGroups = new Map<string, { label: string; count: number }>();
+  // Поверхность — объединяем дубли без учёта регистра. key = lowercase (в URL), label = первое написание.
+  const surfaceGroups = new Map<string, { label: string; count: number }>();
   for (const p of base) {
-    const raw = p.color?.trim();
+    const raw = p.surface?.trim();
     if (!raw) continue;
     const key = raw.toLowerCase();
-    const g = colorGroups.get(key);
+    const g = surfaceGroups.get(key);
     if (g) g.count += 1;
-    else colorGroups.set(key, { label: raw.charAt(0).toUpperCase() + raw.slice(1), count: 1 });
+    else surfaceGroups.set(key, { label: raw.charAt(0).toUpperCase() + raw.slice(1), count: 1 });
   }
-  const colors = [...colorGroups.entries()].map(([key, g]) => ({ key, label: g.label, count: g.count })).sort((a, b) => a.label.localeCompare(b.label));
+  const surfaces = [...surfaceGroups.entries()].map(([key, g]) => ({ key, label: g.label, count: g.count })).sort((a, b) => a.label.localeCompare(b.label));
+  // Цвет — сводим к группам тонов (см. TONES/colorTone). Показываем только непустые группы.
+  const colors = TONES
+    .map((t) => ({ ...t, count: base.filter((p) => colorTone(p.color) === t.key).length }))
+    .filter((t) => t.count > 0);
 
   // Выбранные категории → множество допустимых categoryId (с подкатегориями).
   const allowedCatIds = cats.length
@@ -112,8 +121,8 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
     (p) =>
       (!allowedCatIds || allowedCatIds.has(p.categoryId)) &&
       (!fmts.length || (p.dimensions ? fmts.includes(p.dimensions) : false)) &&
-      (!surfs.length || (p.surface ? surfs.includes(p.surface) : false)) &&
-      (!cols.length || (p.color ? cols.includes(p.color.trim().toLowerCase()) : false))
+      (!surfs.length || (p.surface ? surfs.includes(p.surface.trim().toLowerCase()) : false)) &&
+      (!cols.length || cols.includes(colorTone(p.color) ?? ""))
   );
 
   const area = (d: string | null) => { const s = parseTileSize(d); return s ? s.w * s.h : -1; };
@@ -170,34 +179,23 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
   const optRow = "group/opt flex items-center gap-2.5 py-1.5 cursor-pointer text-[13.5px]";
   const optText = (on: boolean) => `flex-1 transition-colors ${on ? "text-[var(--ink)]" : "text-[var(--ink-soft)] group-hover/opt:text-[var(--ink)]"}`;
 
+  // Дерево категорий с готовыми href — подкатегории сворачиваются стрелкой в клиентском компоненте.
+  const categoryTree = mainCategories.map((c) => ({
+    slug: c.slug,
+    name: c.name,
+    href: tgl("category", c.slug, cats),
+    on: cats.includes(c.slug),
+    subs: allCategories
+      .filter((s) => s.parentId === c.id)
+      .map((s) => ({ slug: s.slug, name: s.name, href: tgl("category", s.slug, cats), on: cats.includes(s.slug) })),
+  }));
+
   const filtersContent = (
     <div className="space-y-7">
       {/* Тип */}
       <div>
         <h3 className={groupHead}>Тип</h3>
-        {mainCategories.map((c) => {
-          const subs = allCategories.filter((s) => s.parentId === c.id);
-          const on = cats.includes(c.slug);
-          return (
-            <div key={c.id}>
-              <Link href={tgl("category", c.slug, cats)} className={optRow}>
-                <Check on={on} /><span className={optText(on)}>{c.name}</span>
-              </Link>
-              {subs.length > 0 && (
-                <div className="pl-3.5 border-l border-[var(--line)] ml-1">
-                  {subs.map((s) => {
-                    const son = cats.includes(s.slug);
-                    return (
-                      <Link key={s.id} href={tgl("category", s.slug, cats)} className={optRow}>
-                        <Check on={son} /><span className={optText(son)}>{s.name}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        <CatalogCategoryFilter categories={categoryTree} />
       </div>
 
       {/* Формат */}
@@ -220,33 +218,28 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
         <div>
           <h3 className={groupHead}>Поверхность</h3>
           {surfaces.map((s) => {
-            const on = surfs.includes(s);
+            const on = surfs.includes(s.key);
             return (
-              <Link key={s} href={tgl("surface", s, surfs)} className={optRow}>
-                <Check on={on} /><span className={optText(on)}>{s}</span>
+              <Link key={s.key} href={tgl("surface", s.key, surfs)} className={optRow}>
+                <Check on={on} /><span className={optText(on)}>{s.label}</span>
               </Link>
             );
           })}
         </div>
       )}
 
-      {/* Цвет — со свотчами */}
+      {/* Цвет — группы тонов со свотчами */}
       {colors.length > 0 && (
         <div>
           <h3 className={groupHead}>Цвет</h3>
           {colors.map((c) => {
             const on = cols.includes(c.key);
-            const hex = colorHex(c.label);
             return (
               <Link key={c.key} href={tgl("color", c.key, cols)} className={optRow}>
-                {hex ? (
-                  <span
-                    className={`w-[17px] h-[17px] shrink-0 rounded-[4px] border transition-all ${on ? "ring-2 ring-[var(--color-gold-500)] ring-offset-1 ring-offset-[var(--bg-2)] border-transparent" : "border-[var(--line-2)] group-hover/opt:border-[var(--ink-faint)]"}`}
-                    style={{ background: hex }}
-                  />
-                ) : (
-                  <Check on={on} />
-                )}
+                <span
+                  className={`w-[17px] h-[17px] shrink-0 rounded-[4px] border transition-all ${on ? "ring-2 ring-[var(--color-gold-500)] ring-offset-1 ring-offset-[var(--bg-2)] border-transparent" : "border-[var(--line-2)] group-hover/opt:border-[var(--ink-faint)]"}`}
+                  style={{ background: c.swatch }}
+                />
                 <span className={optText(on)}>{c.label}</span>
               </Link>
             );
