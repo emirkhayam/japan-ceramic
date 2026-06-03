@@ -37,6 +37,7 @@ interface ProductData {
   isNew: boolean;
   isPopular: boolean;
   isOnSale: boolean;
+  isMadeToOrder: boolean;
   images: string[];
 }
 
@@ -188,6 +189,7 @@ export default function ProductForm({
       isNew: form.get("isNew") === "on",
       isPopular: form.get("isPopular") === "on",
       isOnSale: form.get("isOnSale") === "on",
+      isMadeToOrder: form.get("isMadeToOrder") === "on",
       pdfUrl,
       zipUrl,
       images,
@@ -438,6 +440,7 @@ export default function ProductForm({
             { name: "isNew", label: "Новинка", checked: initial?.isNew, color: "var(--color-gold-400)" },
             { name: "isPopular", label: "Популярное / Хит", checked: initial?.isPopular, color: "#6fb0ff" },
             { name: "isOnSale", label: "Акция / Скидка", checked: initial?.isOnSale, color: "#ff7a7a" },
+            { name: "isMadeToOrder", label: "Под заказ", checked: initial?.isMadeToOrder, color: "#d8a657" },
           ] as const).map((b) => (
             <label
               key={b.name}

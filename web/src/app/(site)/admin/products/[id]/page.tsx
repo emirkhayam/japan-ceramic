@@ -54,6 +54,7 @@ export default async function EditProductPage({
             isNew: product.isNew,
             isPopular: product.isPopular,
             isOnSale: product.isOnSale,
+            isMadeToOrder: product.isMadeToOrder,
             pdfUrl: product.pdfUrl || "",
             zipUrl: product.zipUrl || "",
             images: product.images.map((img) => img.imageUrl),

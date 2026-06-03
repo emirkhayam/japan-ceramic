@@ -76,6 +76,7 @@ function toTile(p: CollProduct) {
     isNew: p.isNew,
     isPopular: p.isPopular,
     isOnSale: p.isOnSale,
+    isMadeToOrder: p.isMadeToOrder,
     category: p.category,
     images: p.images.map((img) => ({ imageUrl: img.imageUrl })),
   };

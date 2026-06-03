@@ -221,7 +221,7 @@ export default async function ProductDetailPage({
           {/* ---- Информация (справа) ---- */}
           <div className="min-w-0">
             {/* Badges */}
-            {(product.isNew || product.isPopular || product.isOnSale) && (
+            {(product.isNew || product.isPopular || product.isOnSale || product.isMadeToOrder) && (
               <div className="flex flex-wrap items-center gap-2 mb-4">
                 {product.isPopular && (
                   <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[rgba(255,255,255,.08)] text-[var(--ink)] border border-white/15">Хит</span>
@@ -231,6 +231,9 @@ export default async function ProductDetailPage({
                 )}
                 {product.isOnSale && (
                   <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[var(--danger)] text-white">Акция</span>
+                )}
+                {product.isMadeToOrder && (
+                  <span className="px-2.5 py-1 rounded-sm text-[10px] font-semibold tracking-[.12em] uppercase bg-[rgba(255,255,255,.06)] text-[var(--color-gold-300)] border border-[rgba(206,173,120,.45)]">Под заказ</span>
                 )}
               </div>
             )}

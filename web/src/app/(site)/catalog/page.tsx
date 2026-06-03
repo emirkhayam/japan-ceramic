@@ -313,6 +313,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                     p.isNew && { t: "NEW", cls: "bg-[var(--color-gold-500)] text-[#0a0d12]" },
                     p.isPopular && { t: "TOP", cls: "bg-[rgba(8,10,15,.7)] text-white border border-white/20 backdrop-blur-sm" },
                     p.isOnSale && { t: "АКЦИЯ", cls: "bg-[var(--danger)] text-white" },
+                    p.isMadeToOrder && { t: "ПОД ЗАКАЗ", cls: "bg-[rgba(8,10,15,.72)] text-[var(--color-gold-300)] border border-[rgba(206,173,120,.45)] backdrop-blur-sm" },
                   ].filter(Boolean) as { t: string; cls: string }[];
 
                   return (

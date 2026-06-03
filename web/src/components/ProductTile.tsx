@@ -13,6 +13,7 @@ export interface TileProduct {
   isNew?: boolean;
   isPopular?: boolean;
   isOnSale?: boolean;
+  isMadeToOrder?: boolean;
   category?: { name: string } | null;
   images: { imageUrl: string }[];
 }
@@ -23,6 +24,7 @@ export default function ProductTile({ product, eyebrow }: { product: TileProduct
     product.isPopular && { label: "Хит", cls: "bg-[rgba(0,0,0,.6)] text-white border border-white/15 backdrop-blur-sm" },
     product.isNew && { label: "Новинка", cls: "bg-[var(--color-gold-500)] text-[var(--on-gold)]" },
     product.isOnSale && { label: "Акция", cls: "bg-[var(--danger)] text-white" },
+    product.isMadeToOrder && { label: "Под заказ", cls: "bg-[rgba(0,0,0,.6)] text-[var(--color-gold-300)] border border-[rgba(206,173,120,.45)] backdrop-blur-sm" },
   ].filter(Boolean) as { label: string; cls: string }[];
 
   const chips: { text?: string; icon?: "frost" }[] = [

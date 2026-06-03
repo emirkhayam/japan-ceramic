@@ -88,6 +88,7 @@ model Product {
   isNew        Boolean        @default(false)
   isPopular    Boolean        @default(false)
   isOnSale     Boolean        @default(false)
+  isMadeToOrder Boolean       @default(false)
   createdAt    DateTime       @default(now())
   pdfUrl       String?
   zipUrl       String?

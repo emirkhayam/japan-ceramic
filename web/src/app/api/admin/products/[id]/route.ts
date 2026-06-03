@@ -36,7 +36,7 @@ export async function PUT(
 
   const { id } = await params;
   const body = await request.json();
-  const { name, slug, categoryId, description, dimensions, surface, weight, collection, color, thickness, boxWeight, boxQuantity, boxArea, wearResistance, antiSlip, rectified, frostResistant, stainResistant, technology, application, pdfUrl, zipUrl, isActive, isNew, isPopular, isOnSale, images } = body;
+  const { name, slug, categoryId, description, dimensions, surface, weight, collection, color, thickness, boxWeight, boxQuantity, boxArea, wearResistance, antiSlip, rectified, frostResistant, stainResistant, technology, application, pdfUrl, zipUrl, isActive, isNew, isPopular, isOnSale, isMadeToOrder, images } = body;
 
   const product = await prisma.product.update({
     where: { id },
@@ -67,6 +67,7 @@ export async function PUT(
       ...(isNew !== undefined && { isNew }),
       ...(isPopular !== undefined && { isPopular }),
       ...(isOnSale !== undefined && { isOnSale }),
+      ...(isMadeToOrder !== undefined && { isMadeToOrder }),
     },
     include: { category: true, images: true },
   });
