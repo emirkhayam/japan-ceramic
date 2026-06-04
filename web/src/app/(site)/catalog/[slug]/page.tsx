@@ -9,6 +9,7 @@ import ProductGallery from "@/components/ProductGallery";
 import ProductSpecs from "@/components/ProductSpecs";
 import ProductFeatureStrip from "@/components/ProductFeatureStrip";
 import TileCalculator from "@/components/TileCalculator";
+import { hasPrice, formatPrice, PRICE_UNIT } from "@/lib/price";
 
 const FALLBACK_IMG = "/placeholder-tile.svg";
 
@@ -296,6 +297,20 @@ export default async function ProductDetailPage({
               </div>
             )}
 
+            {/* Цена за м² */}
+            <div className="flex items-baseline gap-2.5 mb-7">
+              {hasPrice(product.price) ? (
+                <>
+                  <span className="text-[clamp(26px,2.6vw,34px)] font-light leading-none tracking-tight tabular-nums text-[var(--color-gold-300)]">
+                    {formatPrice(product.price)}
+                  </span>
+                  <span className="text-[12px] tracking-[.12em] uppercase text-[var(--ink-mute)]">{PRICE_UNIT}</span>
+                </>
+              ) : (
+                <span className="text-[15px] text-[var(--ink-mute)]">Цена по запросу</span>
+              )}
+            </div>
+
             {/* Feature icon strip */}
             <ProductFeatureStrip features={headline} />
 
@@ -347,9 +362,9 @@ export default async function ProductDetailPage({
                     <div className="text-[10px] text-[var(--ink-faint)] uppercase tracking-wider">PDF</div>
                   </div>
                 </a>
-                {product.zipUrl && (
+                {(product.zipUrl || product.images.length > 0) && (
                   <a
-                    href={product.zipUrl}
+                    href={product.zipUrl || `/api/product-textures/${product.slug}`}
                     download
                     className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[rgba(206,173,120,.5)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
                   >

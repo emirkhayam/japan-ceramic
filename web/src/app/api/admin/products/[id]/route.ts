@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { parsePriceInput } from "@/lib/price";
 
 function slugify(text: string) {
   return text
@@ -36,7 +37,7 @@ export async function PUT(
 
   const { id } = await params;
   const body = await request.json();
-  const { name, slug, categoryId, description, dimensions, surface, weight, collection, color, thickness, boxWeight, boxQuantity, boxArea, wearResistance, antiSlip, rectified, frostResistant, stainResistant, technology, application, pdfUrl, zipUrl, isActive, isNew, isPopular, isOnSale, isMadeToOrder, images } = body;
+  const { name, slug, categoryId, description, price, dimensions, surface, weight, collection, color, thickness, boxWeight, boxQuantity, boxArea, wearResistance, antiSlip, rectified, frostResistant, stainResistant, technology, application, pdfUrl, zipUrl, isActive, isNew, isPopular, isOnSale, isMadeToOrder, images } = body;
 
   const product = await prisma.product.update({
     where: { id },
@@ -45,6 +46,7 @@ export async function PUT(
       ...(slug && slug.trim() && { slug: slugify(slug) }),
       ...(categoryId !== undefined && { categoryId }),
       ...(description !== undefined && { description: description || null }),
+      ...(price !== undefined && { price: parsePriceInput(price) }),
       ...(dimensions !== undefined && { dimensions: dimensions || null }),
       ...(surface !== undefined && { surface: surface || null }),
       ...(weight !== undefined && { weight: weight || null }),

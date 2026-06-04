@@ -15,6 +15,7 @@ interface ProductData {
   slug: string;
   categoryId: string;
   description: string;
+  price: string;
   dimensions: string;
   surface: string;
   weight: string;
@@ -169,6 +170,7 @@ export default function ProductForm({
       slug: form.get("slug"),
       categoryId: form.get("categoryId"),
       description: form.get("description") || "",
+      price: ((form.get("price") as string) || "").trim().replace(",", "."),
       dimensions: form.get("dimensions") || "",
       surface: form.get("surface") || "",
       weight: form.get("weight") || "",
@@ -352,7 +354,7 @@ export default function ProductForm({
         <textarea name="description" rows={3} defaultValue={initial?.description || ""} className={inputClass} />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-5 mb-5">
+      <div className="grid md:grid-cols-3 gap-5 mb-5">
         <div>
           <label className="block text-xs font-medium tracking-[.08em] uppercase text-[var(--ink-mute)] mb-2">Размеры</label>
           <input type="text" name="dimensions" defaultValue={initial?.dimensions || ""} placeholder="600×1200×10mm" className={inputClass} />
@@ -360,6 +362,11 @@ export default function ProductForm({
         <div>
           <label className="block text-xs font-medium tracking-[.08em] uppercase text-[var(--ink-mute)] mb-2">Цвет</label>
           <input type="text" name="color" defaultValue={initial?.color || ""} className={inputClass} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium tracking-[.08em] uppercase text-[var(--ink-mute)] mb-2">Цена за м² (сом)</label>
+          <input type="text" inputMode="decimal" name="price" defaultValue={initial?.price || ""} placeholder="2400" className={inputClass} />
+          <p className="mt-1.5 text-[11px] text-[var(--ink-faint)]">Пусто — «Цена по запросу»</p>
         </div>
       </div>
 

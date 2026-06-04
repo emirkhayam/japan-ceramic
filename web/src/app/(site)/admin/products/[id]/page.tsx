@@ -34,6 +34,7 @@ export default async function EditProductPage({
             slug: product.slug,
             categoryId: product.categoryId,
             description: product.description || "",
+            price: product.price != null ? String(product.price) : "",
             dimensions: product.dimensions || "",
             surface: product.surface || "",
             weight: product.weight || "",

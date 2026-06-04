@@ -6,6 +6,7 @@ import CatalogFiltersShell from "@/components/CatalogFiltersShell";
 import CatalogCategoryFilter from "@/components/CatalogCategoryFilter";
 import Pagination from "@/components/Pagination";
 import { parseTileSize, prettyFormat, glyphStyle } from "@/lib/tile";
+import { hasPrice, formatPrice, PRICE_UNIT } from "@/lib/price";
 import FormatMiniPreview from "@/components/FormatMiniPreview";
 
 export const dynamic = "force-dynamic";
@@ -302,6 +303,13 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                   const eager = pageNum === 1 && i < 4; // первый ряд — приоритетная загрузка (LCP)
                   const sz = parseTileSize(p.dimensions);
                   const isRect = sz ? Math.max(sz.w, sz.h) / Math.min(sz.w, sz.h) >= 1.25 : false;
+                  // Клинкер/кирпич — штучные элементы, а не бесшовная текстура: всегда показываем
+                  // как плитку на белом фоне с водяным знаком, даже если формат почти квадратный.
+                  const framed = isRect || /клинкер/i.test(p.category.name);
+                  // Для рамочных карточек фон фото срезается на сервере, плитка показывается
+                  // в естественных пропорциях (поле «Размеры» бывает неточным — ему не верим).
+                  const canTrim = main.includes("/storage/v1/object/public/uploads/");
+                  const framedSrc = framed && canTrim ? `/api/trimmed-image?src=${encodeURIComponent(main)}` : main;
                   const badges = [
                     p.isNew && { t: "NEW", cls: "bg-[var(--color-gold-500)] text-[#0a0d12]" },
                     p.isPopular && { t: "TOP", cls: "bg-[rgba(8,10,15,.7)] text-white border border-white/20 backdrop-blur-sm" },
@@ -316,18 +324,19 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                       className={`group relative rounded-xl overflow-hidden border border-white/[.08] bg-gradient-to-b from-[var(--bg-3)] to-[var(--bg-2)] transition-all duration-300 will-change-transform hover:-translate-y-1.5 hover:border-[rgba(206,173,120,.45)] hover:shadow-[0_24px_55px_-24px_rgba(0,0,0,.85)] ${isList ? "flex" : ""}`}
                     >
                       <div
-                        className={`relative overflow-hidden aspect-square ${isRect ? "bg-white" : ""} ${isList ? "w-[200px] shrink-0" : ""}`}
-                        style={isRect ? { backgroundImage: `url("${WATERMARK}")`, backgroundSize: "175px auto" } : undefined}
+                        className={`relative overflow-hidden aspect-square ${framed ? "bg-white" : ""} ${isList ? "w-[200px] shrink-0" : ""}`}
+                        style={framed ? { backgroundImage: `url("${WATERMARK}")`, backgroundSize: "175px auto" } : undefined}
                       >
-                        {isRect ? (
-                          /* Прямоугольная плитка — целиком на белом фоне с водяным знаком, в обводке. */
+                        {framed ? (
+                          /* Плитка целиком на белом фоне с водяным знаком, в обводке.
+                             Пропорции — естественные, от самого (обрезанного) фото. */
                           <div className="absolute inset-0 flex items-center justify-center p-4">
-                            <div
-                              className="relative overflow-hidden rounded-[3px] border-2 border-black/[.18] shadow-[0_16px_42px_rgba(0,0,0,.26)] transition-transform duration-[600ms] ease-[var(--ease)] group-hover:scale-[1.04]"
-                              style={sz && sz.w >= sz.h ? { width: "84%", aspectRatio: `${sz.w}/${sz.h}` } : sz ? { height: "84%", aspectRatio: `${sz.w}/${sz.h}` } : { width: "84%", aspectRatio: "1/1" }}
-                            >
-                              <Image src={main} alt={p.name} fill sizes="(max-width:768px) 50vw, 300px" priority={eager} className="object-cover scale-[1.32]" />
-                            </div>
+                            <img
+                              src={framedSrc}
+                              alt={p.name}
+                              loading={eager ? "eager" : "lazy"}
+                              className="max-w-[84%] max-h-[84%] w-auto h-auto rounded-[3px] border-2 border-black/[.18] shadow-[0_16px_42px_rgba(0,0,0,.26)] transition-transform duration-[600ms] ease-[var(--ease)] group-hover:scale-[1.04]"
+                            />
                           </div>
                         ) : (
                           /* Квадратная — крупный план текстуры с зумом, в тонкой обводке. */
@@ -347,7 +356,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                         {/* Квадратное мини-превью формата — для всех карточек.
                             Клинкер/прямоугольник «собран» кирпичной кладкой внутри квадрата. */}
                         <FormatMiniPreview
-                          src={main}
+                          src={framedSrc}
                           dimensions={p.dimensions}
                           size={56}
                           title={p.dimensions ? `${prettyFormat(p.dimensions)} мм` : undefined}
@@ -367,7 +376,14 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
                             </span>
                           )}
                         </div>
-                        <span className="mt-3 inline-flex items-center gap-1.5 text-[12px] text-[var(--ink-soft)] group-hover:text-[var(--color-gold-400)] transition-colors">
+                        <div className="mt-2.5 text-[13px] tabular-nums">
+                          {hasPrice(p.price) ? (
+                            <span className="text-[var(--color-gold-300)]">{formatPrice(p.price)} <span className="text-[11px] text-[var(--ink-mute)]">{PRICE_UNIT}</span></span>
+                          ) : (
+                            <span className="text-[12px] text-[var(--ink-faint)]">Цена по запросу</span>
+                          )}
+                        </div>
+                        <span className="mt-2.5 inline-flex items-center gap-1.5 text-[12px] text-[var(--ink-soft)] group-hover:text-[var(--color-gold-400)] transition-colors">
                           Подробнее
                           <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M1 7h11M7.5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
                         </span>

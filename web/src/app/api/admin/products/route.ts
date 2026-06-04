@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { parsePriceInput } from "@/lib/price";
 
 export async function GET() {
   const user = await getSession();
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
       slug: finalSlug,
       categoryId,
       description: description || null,
-      price: price ? parseFloat(price) : null,
+      price: parsePriceInput(price),
       dimensions: dimensions || null,
       surface: surface || null,
       weight: weight || null,
