@@ -20,11 +20,28 @@ interface Contacts {
   showrooms: Showroom[];
 }
 
+interface CategoryCard {
+  slug: string;
+  title: string;
+  desc: string;
+  idx: string;
+  i: number;
+  img: string;
+}
+
 interface Props {
   user: { fullName: string; role: string } | null;
   collections: { slug: string; name: string; img: string | null; desc: string }[];
+  categories: CategoryCard[];
   contacts: Contacts;
 }
+
+// Фолбэк для 3D-блока категорий, если проп не передан (переиспользование компонента).
+const CATEGORY_FALLBACK: CategoryCard[] = [
+  { i: 0, img: "https://images.unsplash.com/photo-1747696766706-5485b39bf358?q=80&w=1100&auto=format&fit=crop", title: "Керамогранит", desc: "Крупноформатные решения для стен и полов", idx: "01", slug: "keramogranit" },
+  { i: 1, img: "https://images.unsplash.com/photo-1625008668243-e10fa6121030?q=80&w=1100&auto=format&fit=crop", title: "Клинкер", desc: "Прочность, фактура и архитектурный характер", idx: "02", slug: "clinker" },
+  { i: 2, img: "https://images.unsplash.com/photo-1703867110039-dc2ad34be121?q=80&w=1100&auto=format&fit=crop", title: "Мозаика", desc: "Детали, которые создают уникальный стиль", idx: "03", slug: "mosaic" },
+];
 
 // Фолбэк для блока «Пространства», если опубликованных коллекций ещё нет.
 const ATMO_FALLBACK = [
@@ -35,7 +52,8 @@ const ATMO_FALLBACK = [
   { img: "https://images.unsplash.com/photo-1640357960494-9242650846d3?q=80&w=1200&auto=format&fit=crop", name: "Silent Luxury", desc: "Роскошь в тишине и совершенстве" },
 ];
 
-export default function LandingContent({ user, collections, contacts }: Props) {
+export default function LandingContent({ user, collections, categories, contacts }: Props) {
+  const catCards = categories?.length ? categories : CATEGORY_FALLBACK;
   const showrooms = contacts.showrooms.length ? contacts.showrooms : [{ name: "Шоурум", address: null, hours: null, mapLink: null, mapEmbedUrl: null }];
   const [room, setRoom] = useState(0);
   const active = showrooms[Math.min(room, showrooms.length - 1)];
@@ -111,6 +129,8 @@ export default function LandingContent({ user, collections, contacts }: Props) {
     const stage = document.getElementById("cat3dStage");
     const section = document.querySelector(".collections");
     if (!stage || !section) return;
+    // Уважать prefers-reduced-motion: не навешивать 3D-tilt и не крутить rAF-петлю перспективы.
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (!matchMedia("(pointer:fine) and (min-width:761px)").matches) return;
 
     const BASE: Record<number, string> = {
@@ -234,12 +254,12 @@ export default function LandingContent({ user, collections, contacts }: Props) {
             </div>
           </div>
           <div className="cat3d-stage reveal" data-d="1" id="cat3dStage">
-            {[
-              { i: 0, img: "https://images.unsplash.com/photo-1747696766706-5485b39bf358?q=80&w=1100&auto=format&fit=crop", title: "Керамогранит", desc: "Крупноформатные решения для стен и полов", idx: "01", slug: "keramogranit" },
-              { i: 1, img: "https://images.unsplash.com/photo-1625008668243-e10fa6121030?q=80&w=1100&auto=format&fit=crop", title: "Клинкер", desc: "Прочность, фактура и архитектурный характер", idx: "02", slug: "clinker" },
-              { i: 2, img: "https://images.unsplash.com/photo-1703867110039-dc2ad34be121?q=80&w=1100&auto=format&fit=crop", title: "Мозаика", desc: "Детали, которые создают уникальный стиль", idx: "03", slug: "mosaic" },
-            ].map((c) => (
-              <article key={c.i} className="cat3d" data-i={c.i}>
+            {catCards.map((c) => (
+              // Ссылка-обёртка — это СТАБИЛЬНЫЙ внешний элемент (.cat3d), он НЕ
+              // трансформируется в 3D (двигается только дочерний .cat3d-box). Любой клик
+              // внутри карточки всплывает к этому <a> и навигирует, даже если внутренняя
+              // 3D-грань «уплыла» под курсором между pointerdown и pointerup.
+              <Link key={c.i} href={`/catalog?category=${c.slug}`} className="cat3d" data-i={c.i} aria-label={`${c.title} — смотреть коллекции`}>
                 <div className="cat3d-box">
                   <span className="cat3d-edge cat3d-edge-l" />
                   <span className="cat3d-edge cat3d-edge-r" />
@@ -257,12 +277,10 @@ export default function LandingContent({ user, collections, contacts }: Props) {
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h11M7.5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
                       </span>
                     </div>
-                    {/* Прозрачный оверлей-ссылка поверх всей лицевой грани — клик по любой части карточки ведёт в каталог на нужную секцию */}
-                    <Link href={`/catalog?category=${c.slug}`} className="cat3d-hit" aria-label={`${c.title} — смотреть коллекции`} />
                   </div>
                 </div>
                 <span className="cat3d-floor" />
-              </article>
+              </Link>
             ))}
           </div>
           <p className="cat3d-caption reveal">Каждая коллекция — это гармония текстуры, цвета и формы.</p>
@@ -549,35 +567,39 @@ const landingStyles = `
   .rail{display:flex;gap:24px;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;padding-bottom:6px;margin-top:46px}
   .rail::-webkit-scrollbar{display:none}
   .cat3d-stage{position:relative;margin-top:74px;display:flex;justify-content:center;align-items:flex-end;gap:clamp(2px,1.2vw,20px);perspective:2000px;perspective-origin:50% 33%;padding:48px 0 32px}
-  .cat3d-stage::before{content:"";position:absolute;left:50%;top:6%;width:780px;height:500px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse,rgba(120,150,205,.15),transparent 68%)}
-  .cat3d-stage::after{content:"";position:absolute;left:50%;bottom:-90px;width:96%;height:260px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse 60% 100% at 50% 38%,rgba(150,175,225,.11),transparent 75%)}
-  .cat3d{position:relative;flex:0 1 374px;min-width:0;aspect-ratio:67/100;transform-style:preserve-3d;cursor:pointer}
+  .cat3d-stage::before{content:"";position:absolute;left:50%;top:4%;width:820px;height:520px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse,rgba(198,154,78,.16),transparent 66%)}
+  .cat3d-stage::after{content:"";position:absolute;left:50%;bottom:-90px;width:96%;height:260px;transform:translateX(-50%);pointer-events:none;z-index:-2;background:radial-gradient(ellipse 58% 100% at 50% 38%,rgba(198,154,78,.13),transparent 74%)}
+  .cat3d{position:relative;flex:0 1 374px;min-width:0;aspect-ratio:67/100;transform-style:preserve-3d;cursor:pointer;color:inherit;text-decoration:none}
   .cat3d-box{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .5s var(--ease);cursor:pointer;will-change:transform}
-  .cat3d-hit{position:absolute;inset:0;z-index:5;border-radius:inherit}
+  .cat3d:focus-visible{outline:2px solid var(--color-gold-400);outline-offset:4px;border-radius:14px}
   .cat3d[data-i="0"] .cat3d-box{transform:rotateY(31deg) translateZ(-46px)}
   .cat3d[data-i="1"] .cat3d-box{transform:translateZ(60px) translateY(-34px) scale(1.05)}
   .cat3d[data-i="2"] .cat3d-box{transform:rotateY(-31deg) translateZ(-46px)}
   .cat3d[data-i="1"]{z-index:3}
   .cat3d-edge{position:absolute;top:20px;bottom:20px;width:42px;background:linear-gradient(180deg,#3c4450 0%,#1a202b 48%,#080a0f 100%)}
   .cat3d-edge::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.12),transparent 42%,rgba(0,0,0,.5))}
+  .cat3d-edge-l::before,.cat3d-edge-r::before{content:"";position:absolute;top:0;bottom:0;width:2px;background:linear-gradient(180deg,rgba(198,154,78,.55),rgba(198,154,78,.08) 60%,transparent)}
+  .cat3d-edge-l::before{right:0}
+  .cat3d-edge-r::before{left:0}
   .cat3d-edge-l{left:0;transform-origin:left center;transform:rotateY(90deg)}
   .cat3d-edge-r{right:0;transform-origin:right center;transform:rotateY(-90deg)}
   .cat3d[data-i="0"] .cat3d-edge-r{display:none}
   .cat3d[data-i="1"] .cat3d-edge{display:none}
   .cat3d[data-i="2"] .cat3d-edge-l{display:none}
   .cat3d-inner{position:absolute;inset:0;border-radius:13px;overflow:hidden;border:1px solid var(--line-2);background:#0b0e15}
+  .cat3d[data-i="1"] .cat3d-inner{border-color:rgba(198,154,78,.42);box-shadow:0 0 0 1px rgba(198,154,78,.14),0 28px 70px -40px rgba(198,154,78,.3)}
   .cat3d-tex{position:absolute;inset:0}
   .cat3d-tex img{width:100%;height:100%;object-fit:cover;filter:grayscale(.2) brightness(.7) contrast(1.05);transition:filter .7s var(--ease),transform 1s var(--ease)}
   .cat3d-tex::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,10,15,.16) 0%,rgba(8,10,15,.44) 44%,rgba(8,10,15,.97) 100%)}
   .cat3d[data-i="1"] .cat3d-tex img{filter:grayscale(.12) brightness(.84) contrast(1.04)}
   .cat3d-box:hover .cat3d-tex img{filter:grayscale(.04) brightness(.92);transform:scale(1.05)}
-  .cat3d-rim{position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;box-shadow:inset 0 1px 0 rgba(255,255,255,.2),inset 0 -90px 90px -64px rgba(0,0,0,.92)}
+  .cat3d-rim{position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;box-shadow:inset 0 1px 0 rgba(255,255,255,.26),inset 0 18px 40px -28px rgba(255,255,255,.14),inset 0 -88px 86px -64px rgba(0,0,0,.88)}
   .cat3d-gloss{position:absolute;inset:0;z-index:3;pointer-events:none;opacity:0;border-radius:inherit;background:radial-gradient(440px circle at var(--mx,50%) var(--my,10%),rgba(255,255,255,.16),transparent 60%);transition:opacity .4s var(--ease)}
   .cat3d-box:hover .cat3d-gloss{opacity:1}
   .cat3d-body{position:absolute;left:30px;right:30px;top:34px;bottom:34px;z-index:4;display:flex;flex-direction:column}
-  .cat3d-idx{font-family:var(--font-serif),'Playfair Display',serif;font-size:20px;color:var(--color-gold-400);letter-spacing:.06em}
-  .cat3d-line{width:1px;flex:1;margin:16px 0 16px 1px;background:linear-gradient(180deg,var(--line-2),rgba(255,255,255,.04))}
-  .cat3d-title{font-size:clamp(23px,2vw,30px);font-weight:300;letter-spacing:.005em}
+  .cat3d-idx{font-family:var(--font-serif),'Playfair Display',serif;font-size:23px;font-weight:500;color:var(--color-gold-300);letter-spacing:.07em;text-shadow:0 1px 14px rgba(198,154,78,.28)}
+  .cat3d-line{width:1px;flex:1;margin:16px 0 16px 1px;background:linear-gradient(180deg,rgba(198,154,78,.32),rgba(255,255,255,.04))}
+  .cat3d-title{font-size:clamp(24px,2vw,31px);font-weight:300;letter-spacing:.012em}
   .cat3d-desc{font-size:13.5px;color:var(--ink-soft);margin-top:12px;max-width:236px;line-height:1.5}
   .cat3d-link{display:inline-flex;align-items:center;gap:12px;margin-top:24px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink)}
   .cat3d-link .ll{width:46px;height:1px;background:var(--line-2);transition:width .5s var(--ease),background .5s var(--ease)}
@@ -585,9 +607,16 @@ const landingStyles = `
   .cat3d-box:hover .cat3d-link{color:var(--color-gold-400)}
   .cat3d-box:hover .cat3d-link .ll{width:82px;background:var(--color-gold-500)}
   .cat3d-box:hover .cat3d-link svg{transform:translateX(4px)}
-  .cat3d-floor{position:absolute;left:-9%;right:-9%;bottom:-5%;height:104px;z-index:-1;background:radial-gradient(ellipse 56% 100% at 50% 100%,rgba(0,0,0,.92),transparent 74%);filter:blur(13px)}
-  .cat3d[data-i="1"] .cat3d-floor{background:radial-gradient(ellipse 62% 100% at 50% 100%,rgba(0,0,0,.92),transparent 72%),radial-gradient(ellipse 98% 80% at 50% 78%,rgba(122,150,206,.18),transparent 76%)}
+  .cat3d-floor{position:absolute;left:-9%;right:-9%;bottom:-5%;height:108px;z-index:-1;background:radial-gradient(ellipse 54% 100% at 50% 100%,rgba(0,0,0,.9),transparent 75%);filter:blur(14px)}
+  .cat3d[data-i="1"] .cat3d-floor{background:radial-gradient(ellipse 60% 100% at 50% 100%,rgba(0,0,0,.92),transparent 73%),radial-gradient(ellipse 98% 80% at 50% 78%,rgba(198,154,78,.2),transparent 76%)}
   .cat3d-caption{text-align:center;margin-top:58px;font-size:13.5px;color:var(--ink-mute);letter-spacing:.015em}
+  @media (prefers-reduced-motion: reduce){
+    .cat3d-stage{perspective:none}
+    .cat3d-box,.cat3d[data-i="0"] .cat3d-box,.cat3d[data-i="1"] .cat3d-box,.cat3d[data-i="2"] .cat3d-box{transform:none!important;transition:none}
+    .cat3d-edge,.cat3d-floor{display:none}
+    .cat3d-tex img,.cat3d-link .ll,.cat3d-link svg{transition:none}
+    .collections .reveal{opacity:1;transform:none;transition:none}
+  }
 
   .ai{background:var(--bg-2);overflow:hidden}
   .ai::before{content:"";position:absolute;left:-10%;top:10%;width:600px;height:600px;background:radial-gradient(circle,var(--glow),transparent 65%);pointer-events:none}
@@ -717,9 +746,9 @@ const landingStyles = `
     .hero{padding-bottom:40px}
     .hero-actions .btn{flex:1;justify-content:center}
     .sec-top{flex-direction:column;align-items:flex-start}
-    .cat3d-stage{overflow-x:auto;scrollbar-width:none;perspective:none;justify-content:flex-start;margin-top:42px;padding:14px 2px 8px;gap:16px}
+    .cat3d-stage{overflow-x:auto;scrollbar-width:none;perspective:none;justify-content:flex-start;margin-top:42px;padding:14px 22px 8px;gap:16px;scroll-snap-type:x mandatory;scroll-padding:0 22px}
     .cat3d-stage::-webkit-scrollbar{display:none}
-    .cat3d{flex:0 0 78%;aspect-ratio:7/10}
+    .cat3d{flex:0 0 80%;aspect-ratio:7/10;scroll-snap-align:center}
     .cat3d[data-i="0"] .cat3d-box,.cat3d[data-i="1"] .cat3d-box,.cat3d[data-i="2"] .cat3d-box{transform:none}
     .cat3d-edge,.cat3d-floor{display:none}
     .atmo-card{flex:0 0 72%}
