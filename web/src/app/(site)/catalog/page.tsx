@@ -199,10 +199,21 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
         <CatalogCategoryFilter categories={categoryTree} />
       </div>
 
-      {/* Формат */}
+      {/* Формат — форматов много, поэтому список сворачиваемый (нативный <details>).
+          Развёрнут по умолчанию, только если формат уже выбран в фильтре. */}
       {formats.length > 0 && (
-        <div>
-          <h3 className={groupHead}>Формат</h3>
+        <details className="filter-acc" open={fmts.length > 0}>
+          <summary className={`${groupHead} flex items-center justify-between gap-2 cursor-pointer select-none hover:text-[var(--ink-soft)] transition-colors`}>
+            <span className="flex items-center gap-2">
+              Формат
+              {fmts.length > 0 ? (
+                <span className="normal-case tracking-normal font-semibold text-[var(--color-gold-400)] tabular-nums">{fmts.length}</span>
+              ) : (
+                <span className="normal-case tracking-normal font-normal text-[var(--ink-faint)] tabular-nums">{formats.length}</span>
+              )}
+            </span>
+            <svg className="filter-acc-chevron text-[var(--ink-faint)] shrink-0" width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 5.5L7 9.5l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </summary>
           {formats.map((f) => {
             const on = fmts.includes(f);
             return (
@@ -211,7 +222,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
               </Link>
             );
           })}
-        </div>
+        </details>
       )}
 
       {/* Поверхность */}

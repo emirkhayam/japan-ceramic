@@ -179,6 +179,12 @@ h1, h2 {
   animation: shimmer 1.2s infinite linear;
 }
 
+/* ===== Сворачиваемая группа фильтров (нативный <details>, без JS) ===== */
+.filter-acc > summary { list-style: none; }
+.filter-acc > summary::-webkit-details-marker { display: none; }
+.filter-acc .filter-acc-chevron { transition: transform .3s var(--ease); }
+.filter-acc[open] .filter-acc-chevron { transform: rotate(180deg); }
+
 @media print {
   body { background: white !important; color: black !important; }
   body::after { display: none !important; }
