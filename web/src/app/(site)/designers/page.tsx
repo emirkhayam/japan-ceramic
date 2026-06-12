@@ -3,18 +3,22 @@ import type { Metadata } from "next";
 import {
   Sparkles, Image as ImageIcon, Box, FileText, Layers, Clock,
   Package, FolderHeart, Building2, ArrowRight, Phone, MessageCircle, Brush,
+  UserPlus, Download, Truck,
 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getSiteSettings, waHref, telHref } from "@/lib/settings";
+import { DesignerLeadForm } from "@/components/designers/DesignerLeadForm";
+import { TileCalculator } from "@/components/designers/TileCalculator";
 
 export const metadata: Metadata = {
   title: "Дизайнерам и архитекторам — Japan Ceramic",
   description:
-    "Весь ассортимент керамогранита, клинкера и мозаики Japan Ceramic для ваших проектов: студийные фото, бесшовные 3D-текстуры, спецификации и AI-визуализация материала на фото объекта.",
+    "Зарегистрируйтесь и получите доступ к библиотеке Japan Ceramic: студийные фото, бесшовные 3D-текстуры, спецификации и AI-визуализация материала на фото вашего объекта.",
 };
 
 // Лендинг под рекламу для дизайнеров/архитекторов. Намеренно НЕ в основном меню
 // (PUBLIC_NAV) — отдельная посадочная страница для рекламных кампаний.
+// Главный смысл (как на референсе Tilda): регистрация дизайнера → доступ к библиотеке.
 export default async function DesignersPage() {
   const [productCount, categories, formats, heroProducts, settings] = await Promise.all([
     prisma.product.count({ where: { isActive: true } }),
@@ -64,6 +68,13 @@ export default async function DesignersPage() {
     },
   ];
 
+  const steps = [
+    { icon: UserPlus, title: "Регистрация", text: "Оставьте заявку — подтвердим, что вы профессионал, и откроем доступ." },
+    { icon: Download, title: "Доступ к файлам", text: "Скачивайте фото, 3D-текстуры и спецификации по каждой позиции каталога." },
+    { icon: Brush, title: "AI-визуализация", text: "Примеряйте материал на фото объекта: выделяйте участок кистью, комбинируйте." },
+    { icon: Truck, title: "Заявка и поставка", text: "Согласуем объём, пришлём образцы и доставим материал на объект." },
+  ];
+
   const advantages = [
     { icon: Layers, title: "Единая библиотека материалов", text: "Керамогранит, клинкер и мозаика в одном месте — не нужно собирать образцы по десяткам поставщиков." },
     { icon: Clock, title: "Экономия времени", text: "Готовые файлы и визуализация ускоряют подбор: от идеи до согласования материала — за один вечер." },
@@ -82,20 +93,20 @@ export default async function DesignersPage() {
               Весь наш ассортимент — в вашем проекте
             </h1>
             <p className="mt-5 max-w-xl text-lg text-mist-300">
-              Японская керамика, клинкер и мозаика с готовыми файлами для работы:
-              студийные фото, бесшовные 3D-текстуры, спецификации и AI-визуализация
-              материала прямо на фото вашего объекта.
+              Зарегистрируйтесь и получите доступ к библиотеке Japan Ceramic:
+              студийные фото, бесшовные 3D-текстуры, спецификации по каждой позиции
+              и AI-визуализация материала прямо на фото вашего объекта.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/catalog" className="btn-gold !px-7 !py-4 text-base">
-                Смотреть каталог <ArrowRight size={18} />
+              <Link href="#register" className="btn-gold !px-7 !py-4 text-base">
+                Получить доступ бесплатно <ArrowRight size={18} />
               </Link>
-              <Link href="/visualize" className="btn-ghost !px-7 !py-4 text-base">
-                <Sparkles size={18} /> AI-визуализация
+              <Link href="/catalog" className="btn-ghost !px-7 !py-4 text-base">
+                Смотреть каталог
               </Link>
             </div>
             <p className="mt-4 text-sm text-mist-400">
-              Доступ к файлам и визуализации — бесплатно для профессионалов.
+              Бесплатно для профессионалов · доступ открываем после короткой проверки.
             </p>
           </div>
 
@@ -121,11 +132,11 @@ export default async function DesignersPage() {
         </div>
       </section>
 
-      {/* ======================= ГОТОВЫЕ ФАЙЛЫ ======================= */}
+      {/* ======================= ЧТО ОТКРЫВАЕТСЯ ПОСЛЕ РЕГИСТРАЦИИ ======================= */}
       <section className="border-t border-white/5 bg-ink-800/30">
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-24">
           <div className="max-w-2xl">
-            <span className="label-pill">Готовые файлы</span>
+            <span className="label-pill">Что открывается после регистрации</span>
             <h2 className="mt-4 font-display text-3xl sm:text-4xl">
               Всё, что нужно для проекта — уже подготовлено
             </h2>
@@ -148,62 +159,105 @@ export default async function DesignersPage() {
         </div>
       </section>
 
-      {/* ======================= AI-ВИЗУАЛИЗАЦИЯ ======================= */}
+      {/* ======================= КАК ЭТО РАБОТАЕТ ======================= */}
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-24">
-        <div className="grid items-center gap-12 lg:grid-cols-2">
-          <div>
-            <span className="label-pill">AI-визуализация</span>
-            <h2 className="mt-4 font-display text-3xl sm:text-4xl">
-              Примерьте материал прямо на фото объекта
-            </h2>
-            <p className="mt-4 text-mist-300">
-              Загрузите фото интерьера или фасада, выделите кистью нужный участок —
-              и наш ИИ подставит выбранный материал фотореалистично, с сохранением
-              перспективы и света.
-            </p>
-            <ul className="mt-6 space-y-3 text-sm text-mist-300">
-              {[
-                "Выделение участка кистью — меняйте только нужную стену или пол",
-                "Комбинируйте несколько клинкеров на одном фасаде",
-                "Результат за 15–30 секунд, можно скачать и показать клиенту",
-              ].map((t) => (
-                <li key={t} className="flex items-start gap-3">
-                  <Brush size={16} className="mt-0.5 shrink-0 text-gold-400" />
-                  <span>{t}</span>
-                </li>
-              ))}
-            </ul>
-            <Link href="/visualize" className="btn-gold mt-8 !px-7 !py-4 text-base">
-              <Sparkles size={18} /> Открыть визуализацию
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {heroTiles.slice(2, 6).map((p) => (
-              <div key={p.slug} className="overflow-hidden rounded-xl border border-white/10 bg-ink-800 aspect-[4/5]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.images[0]!.imageUrl} alt={p.name} className="h-full w-full object-cover" />
+        <div className="max-w-2xl">
+          <span className="label-pill">Как это работает</span>
+          <h2 className="mt-4 font-display text-3xl sm:text-4xl">Четыре шага до материала на объекте</h2>
+        </div>
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {steps.map((st, i) => (
+            <div key={st.title} className="card relative p-6">
+              <div className="absolute right-5 top-5 font-display text-2xl text-white/10">0{i + 1}</div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gold-500/10 text-gold-400">
+                <st.icon size={22} />
               </div>
-            ))}
+              <h3 className="mt-5 text-base font-semibold text-mist-100">{st.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-mist-400">{st.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ======================= AI-ВИЗУАЛИЗАЦИЯ ======================= */}
+      <section className="border-y border-white/5 bg-ink-800/30">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-24">
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div>
+              <span className="label-pill">AI-визуализация</span>
+              <h2 className="mt-4 font-display text-3xl sm:text-4xl">
+                Примерьте материал прямо на фото объекта
+              </h2>
+              <p className="mt-4 text-mist-300">
+                Загрузите фото интерьера или фасада, выделите кистью нужный участок —
+                и наш ИИ подставит выбранный материал фотореалистично, с сохранением
+                перспективы и света.
+              </p>
+              <ul className="mt-6 space-y-3 text-sm text-mist-300">
+                {[
+                  "Выделение участка кистью — меняйте только нужную стену или пол",
+                  "Комбинируйте несколько клинкеров на одном фасаде",
+                  "Результат за 15–30 секунд, можно скачать и показать клиенту",
+                ].map((t) => (
+                  <li key={t} className="flex items-start gap-3">
+                    <Brush size={16} className="mt-0.5 shrink-0 text-gold-400" />
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link href="/visualize" className="btn-gold mt-8 !px-7 !py-4 text-base">
+                <Sparkles size={18} /> Открыть визуализацию
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {heroTiles.slice(2, 6).map((p) => (
+                <div key={p.slug} className="overflow-hidden rounded-xl border border-white/10 bg-ink-800 aspect-[4/5]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.images[0]!.imageUrl} alt={p.name} className="h-full w-full object-cover" />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ======================= ПРЕИМУЩЕСТВА ======================= */}
-      <section className="border-y border-white/5 bg-ink-800/30">
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-24">
+        <div className="max-w-2xl">
+          <span className="label-pill">Почему с нами удобно</span>
+          <h2 className="mt-4 font-display text-3xl sm:text-4xl">Меньше рутины — больше проектов</h2>
+        </div>
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {advantages.map((a) => (
+            <div key={a.title} className="card p-6">
+              <a.icon size={22} className="text-gold-400" />
+              <h3 className="mt-4 text-base font-semibold text-mist-100">{a.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-mist-400">{a.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ======================= ИНСТРУМЕНТЫ: КАЛЬКУЛЯТОР ======================= */}
+      <section className="border-t border-white/5 bg-ink-800/30">
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-24">
-          <div className="max-w-2xl">
-            <span className="label-pill">Почему с нами удобно</span>
-            <h2 className="mt-4 font-display text-3xl sm:text-4xl">Меньше рутины — больше проектов</h2>
-          </div>
-          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {advantages.map((a) => (
-              <div key={a.title} className="card p-6">
-                <a.icon size={22} className="text-gold-400" />
-                <h3 className="mt-4 text-base font-semibold text-mist-100">{a.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-mist-400">{a.text}</p>
-              </div>
-            ))}
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div>
+              <span className="label-pill">Инструменты дизайнера</span>
+              <h2 className="mt-4 font-display text-3xl sm:text-4xl">
+                Посчитайте расход прямо здесь
+              </h2>
+              <p className="mt-4 text-mist-300">
+                Быстрая прикидка объёма закупки с запасом на подрез — чтобы не
+                держать цифры в голове на встрече с клиентом. А все подобранные
+                материалы сохраняйте в личном кабинете по проектам.
+              </p>
+              <Link href="#register" className="btn-ghost mt-8 !px-7 !py-4 text-base">
+                Получить полный доступ <ArrowRight size={18} />
+              </Link>
+            </div>
+            <TileCalculator />
           </div>
         </div>
       </section>
@@ -243,36 +297,52 @@ export default async function DesignersPage() {
         )}
       </section>
 
-      {/* ======================= CTA / КОНТАКТЫ ======================= */}
-      <section className="border-t border-white/5">
+      {/* ======================= РЕГИСТРАЦИЯ / ЗАЯВКА ======================= */}
+      <section id="register" className="scroll-mt-24 border-t border-white/5">
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-24">
-          <div className="card relative overflow-hidden p-8 sm:p-14">
-            <div className="relative z-10 max-w-2xl">
+          <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
+            <div>
               <Building2 size={26} className="text-gold-400" />
               <h2 className="mt-4 font-display text-3xl sm:text-4xl">
-                Начните проект с Japan Ceramic
+                Зарегистрируйтесь и получите доступ
               </h2>
               <p className="mt-3 text-mist-300">
-                Подберём материал под задачу, пришлём образцы и просчитаем объём.
-                Напишите нам — ответим быстро.
+                Оставьте заявку — мы свяжемся с вами и откроем доступ к библиотеке
+                Japan Ceramic: фото, 3D-текстуры, спецификации и AI-визуализация.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
+              <ul className="mt-6 space-y-3 text-sm text-mist-300">
+                {[
+                  "Доступ бесплатный для дизайнеров и архитекторов",
+                  "Файлы готовы к работе в ваших сценах и презентациях",
+                  "Подборки материалов сохраняются в личном кабинете",
+                ].map((t) => (
+                  <li key={t} className="flex items-start gap-3">
+                    <ArrowRight size={16} className="mt-0.5 shrink-0 text-gold-400" />
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-8 flex flex-wrap items-center gap-3">
                 {wa && (
-                  <a href={wa} target="_blank" rel="noopener" className="btn-gold !px-7 !py-4 text-base">
-                    <MessageCircle size={18} /> Написать в WhatsApp
+                  <a href={wa} target="_blank" rel="noopener" className="btn-ghost !px-6 !py-3 text-sm">
+                    <MessageCircle size={16} /> WhatsApp
                   </a>
                 )}
                 {tel && (
-                  <a href={tel} className="btn-ghost !px-7 !py-4 text-base">
-                    <Phone size={18} /> {settings.phone}
+                  <a href={tel} className="btn-ghost !px-6 !py-3 text-sm">
+                    <Phone size={16} /> {settings.phone}
                   </a>
                 )}
-                <Link href="/catalog" className="btn-ghost !px-7 !py-4 text-base">
-                  Смотреть каталог
-                </Link>
               </div>
+              <p className="mt-5 text-sm text-mist-400">
+                Предпочитаете зарегистрироваться сами?{" "}
+                <Link href="/auth/register" className="text-gold-400 hover:underline">
+                  Создать аккаунт →
+                </Link>
+              </p>
             </div>
-            <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-gold-500/10 blur-3xl" />
+
+            <DesignerLeadForm />
           </div>
         </div>
       </section>
