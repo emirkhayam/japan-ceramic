@@ -2,12 +2,17 @@ import { NextRequest } from "next/server";
 import { createElement } from "react";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth";
 import { ProductCardPdf } from "@/lib/product-card-pdf";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  // Карта продукта доступна только авторизованным (любой залогиненный аккаунт).
+  const user = await getSession();
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
   const { slug: raw } = await params;
   const slug = decodeURIComponent(raw);
 
@@ -29,9 +34,9 @@ export async function GET(
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${safe}.pdf"; filename*=UTF-8''${utf8}`,
-      // Кэшируем карточку — данные товара меняются редко. CDN держит сутки,
-      // отдаёт устаревшую копию неделю, пока пересобирает в фоне.
-      "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
+      // Роут защищён сессией — нельзя кэшировать публично на CDN, иначе копия
+      // утечёт анонимному пользователю. Держим ответ приватным.
+      "Cache-Control": "private, no-store",
     },
   });
 }

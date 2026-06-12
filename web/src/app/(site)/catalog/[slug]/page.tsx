@@ -350,18 +350,33 @@ export default async function ProductDetailPage({
                 <span className="w-6 h-px bg-[var(--color-gold-500)]" />Материалы для проекта
               </h2>
               <div className="flex flex-col gap-2.5">
-                <a
-                  href={product.pdfUrl || `/api/product-card/${product.slug}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[rgba(206,173,120,.5)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)] transition-colors"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  <div>
-                    <div className="text-[13px] font-medium text-[var(--ink-soft)] group-hover:text-[var(--ink)] transition-colors">Карта продукта</div>
-                    <div className="text-[10px] text-[var(--ink-faint)] uppercase tracking-wider">PDF</div>
-                  </div>
-                </a>
+                {/* Карта продукта (PDF) — только для авторизованных. Анонимам показываем
+                    ту же по виду кнопку, но ведёт на вход (реального URL файла они не видят). */}
+                {user ? (
+                  <a
+                    href={product.pdfUrl || `/api/product-card/${product.slug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[rgba(206,173,120,.5)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)] transition-colors"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <div>
+                      <div className="text-[13px] font-medium text-[var(--ink-soft)] group-hover:text-[var(--ink)] transition-colors">Карта продукта</div>
+                      <div className="text-[10px] text-[var(--ink-faint)] uppercase tracking-wider">PDF</div>
+                    </div>
+                  </a>
+                ) : (
+                  <Link
+                    href={`/auth/login?from=/catalog/${product.slug}`}
+                    className="group flex items-center gap-3 px-4 py-3 border border-[var(--line-2)] rounded-sm hover:border-[rgba(206,173,120,.5)] hover:bg-[rgba(255,255,255,.03)] transition-all duration-200 cursor-pointer"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)] transition-colors"><rect x="5" y="11" width="14" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 11V8a4 4 0 1 1 8 0v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    <div>
+                      <div className="text-[13px] font-medium text-[var(--ink-soft)] group-hover:text-[var(--ink)] transition-colors">Карта продукта</div>
+                      <div className="text-[10px] text-[var(--ink-faint)] uppercase tracking-wider">PDF · Войдите, чтобы скачать</div>
+                    </div>
+                  </Link>
+                )}
                 {(product.zipUrl || product.images.length > 0) && (
                   <a
                     href={product.zipUrl || `/api/product-textures/${product.slug}`}
