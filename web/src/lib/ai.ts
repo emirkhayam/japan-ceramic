@@ -11,7 +11,9 @@ export type VisualizeInput = {
   roomImageUrl: string;
   tileImageUrl: string;
   tileName: string;
-  surface: 'floor' | 'wall';
+  surface: 'floor' | 'wall' | 'mask';
+  /** PNG-маска (белое = куда класть плитку, чёрное = не трогать). Только для surface==='mask'. */
+  maskImageUrl?: string;
   provider?: Provider;
 };
 
@@ -60,7 +62,7 @@ export const PROVIDERS_META: Record<
   },
 };
 
-const SURFACE_PROMPT: Record<VisualizeInput['surface'], string> = {
+const SURFACE_PROMPT: Record<'floor' | 'wall', string> = {
   floor:
     'Replace the floor surface of this interior room with the ceramic tile texture from the reference image. Maintain perfect perspective, realistic seams between tiles, accurate lighting and shadows from the original photo. Keep all walls, furniture, ceiling and other objects completely unchanged. The tile pattern must follow the floor perspective naturally and look photorealistic.',
   wall:
@@ -113,7 +115,7 @@ async function viaFal(input: VisualizeInput): Promise<ProviderOutput> {
   if (!key) throw new Error('FAL_KEY не задан в .env.local');
   fal.config({ credentials: key });
 
-  const prompt = `${SURFACE_PROMPT[input.surface]} The tile is: ${input.tileName}. Photorealistic interior design rendering, high detail.`;
+  const prompt = `${SURFACE_PROMPT[input.surface === 'floor' ? 'floor' : 'wall']} The tile is: ${input.tileName}. Photorealistic interior design rendering, high detail.`;
 
   const result: any = await fal.subscribe('fal-ai/flux-pro/kontext', {
     input: {
@@ -145,7 +147,7 @@ async function viaReplicate(input: VisualizeInput): Promise<ProviderOutput> {
   const { default: Replicate } = await import('replicate');
   const client = new Replicate({ auth: key });
 
-  const prompt = `${SURFACE_PROMPT[input.surface]} Tile texture: ${input.tileName}. Apply the reference tile to the surface.`;
+  const prompt = `${SURFACE_PROMPT[input.surface === 'floor' ? 'floor' : 'wall']} Tile texture: ${input.tileName}. Apply the reference tile to the surface.`;
 
   const output: any = await client.run('black-forest-labs/flux-kontext-pro', {
     input: {
@@ -179,14 +181,36 @@ async function viaGemini(input: VisualizeInput): Promise<ProviderOutput> {
     const client = new GoogleGenAI({ apiKey: key });
     console.log('[viaGemini] Client created');
 
-    const [roomPart, tilePart] = await Promise.all([
+    // Режим маски: пользователь кистью выделил участок. Передаём третью картинку — маску.
+    const maskMode = input.surface === 'mask' && !!input.maskImageUrl;
+
+    const [roomPart, tilePart, maskPart] = await Promise.all([
       urlToInlinePart(input.roomImageUrl),
       urlToInlinePart(input.tileImageUrl),
+      maskMode ? urlToInlinePart(input.maskImageUrl as string) : Promise.resolve(null),
     ]);
-    console.log('[viaGemini] Images loaded, room size:', roomPart.inlineData.data.length, 'tile size:', tilePart.inlineData.data.length);
+    console.log('[viaGemini] Images loaded, room size:', roomPart.inlineData.data.length, 'tile size:', tilePart.inlineData.data.length, 'mask:', maskMode);
 
-    const surfaceWord = input.surface === 'floor' ? 'floor' : 'one main wall';
-    const prompt = `You are a photorealistic interior visualization engine. IMAGE 1 is a photo of a real room. IMAGE 2 is a seamless ceramic tile texture/swatch called "${input.tileName}".
+    type InlinePart = { inlineData: { data: string; mimeType: string } };
+    let prompt: string;
+    let requestParts: Array<{ text: string } | InlinePart>;
+
+    if (maskMode && maskPart) {
+      prompt = `You are a photorealistic surface-replacement engine. IMAGE 1 is a real photo (interior or building facade). IMAGE 2 is a binary MASK of the SAME size and framing as IMAGE 1: the WHITE region marks the EXACT area to re-surface, the BLACK region must stay untouched. IMAGE 3 is a single ceramic/clinker tile texture/swatch called "${input.tileName}".
+
+Task: cover ONLY the white-masked region of IMAGE 1 with the tile from IMAGE 3, fully replacing whatever material is there.
+
+Hard rules:
+- Change ONLY the area that is white in the MASK. Every pixel in the black-masked region must remain pixel-for-pixel identical to IMAGE 1 — same walls, windows, sky, objects, lighting and camera framing.
+- IMAGE 3 is ONE tile. Treat it as a repeating tile and lay many identical copies edge-to-edge in a regular grid across the masked area.
+- Reproduce IMAGE 3 EXACTLY — its pattern, geometry, scale, color, veining and grout. NEVER substitute a different or generic tile.
+- Lay the tiles in correct perspective for the masked surface, with realistic seams that follow the surface's vanishing lines.
+- Preserve the original photo's lighting, shadows and reflections so the new surface sits naturally.
+Output only the final edited photo, nothing else.`;
+      requestParts = [{ text: prompt }, roomPart, maskPart, tilePart];
+    } else {
+      const surfaceWord = input.surface === 'floor' ? 'floor' : 'one main wall';
+      prompt = `You are a photorealistic interior visualization engine. IMAGE 1 is a photo of a real room. IMAGE 2 is a seamless ceramic tile texture/swatch called "${input.tileName}".
 
 Task: completely re-surface the ${surfaceWord} in IMAGE 1 with the tile shown in IMAGE 2, fully replacing the existing covering.
 
@@ -198,6 +222,8 @@ Hard rules:
 - Preserve the original photo's lighting, shadows and reflections so the new surface sits naturally.
 - Keep EVERYTHING else identical: walls, ceiling, furniture, windows, decor, camera framing — change only the ${surfaceWord}.
 Output only the final edited photo, nothing else.`;
+      requestParts = [{ text: prompt }, roomPart, tilePart];
+    }
 
     console.log('[viaGemini] Calling Gemini API...');
     const response: any = await client.models.generateContent({
@@ -205,7 +231,7 @@ Output only the final edited photo, nothing else.`;
       contents: [
         {
           role: 'user',
-          parts: [{ text: prompt }, roomPart, tilePart],
+          parts: requestParts,
         },
       ],
       config: { responseModalities: ['TEXT', 'IMAGE'] },

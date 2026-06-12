@@ -11,7 +11,9 @@ export const maxDuration = 60;
 type Body = {
   roomImage: string;
   tileId: string;
-  surface: 'floor' | 'wall';
+  surface: 'floor' | 'wall' | 'mask';
+  /** PNG-маска (data URL): белое = куда класть плитку. Обязательна при surface==='mask'. */
+  maskImage?: string;
   provider?: Provider;
 };
 
@@ -37,10 +39,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { roomImage, tileId, surface, provider } = body;
+  const { roomImage, tileId, surface, maskImage, provider } = body;
   if (!roomImage || !tileId || !surface) {
     return NextResponse.json(
       { error: 'roomImage, tileId, and surface are required' },
+      { status: 400 },
+    );
+  }
+  if (surface === 'mask' && !maskImage) {
+    return NextResponse.json(
+      { error: 'Выделите участок кистью перед генерацией' },
       { status: 400 },
     );
   }
@@ -77,13 +85,17 @@ export async function POST(req: Request) {
     tileKey = dbProduct.slug;
   }
 
+  // Маска уникальна на каждый запрос — кэш демо-сцен здесь не применим.
   const cachedProvider = provider || 'auto';
-  const cached = await lookupCache({
-    roomImage,
-    tileId: tileKey,
-    surface,
-    provider: cachedProvider,
-  });
+  const cached =
+    surface === 'mask'
+      ? null
+      : await lookupCache({
+          roomImage,
+          tileId: tileKey,
+          surface,
+          provider: cachedProvider,
+        });
   if (cached) {
     await logVisualization({ userId: user.id, tileSlug: tileKey, tileName, surface, provider: 'cache' });
     return NextResponse.json({
@@ -100,6 +112,7 @@ export async function POST(req: Request) {
       tileImageUrl,
       tileName,
       surface,
+      maskImageUrl: maskImage,
       provider,
     });
 
@@ -132,7 +145,7 @@ async function logVisualization(data: {
   userId: string;
   tileSlug: string;
   tileName: string;
-  surface: 'floor' | 'wall';
+  surface: 'floor' | 'wall' | 'mask';
   provider: string;
   promptTokens?: number;
   outputTokens?: number;

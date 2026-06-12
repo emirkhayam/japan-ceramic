@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { PhotoUploader } from '@/components/PhotoUploader';
+import { MaskCanvas, type MaskCanvasHandle } from '@/components/MaskCanvas';
 import { CatalogTileSelector, type CatalogTile } from '@/components/CatalogTileSelector';
 import { VisualizerLoader } from '@/components/VisualizerLoader';
-import { Sparkles, Download, MessageCircle, ArrowLeft, AlertCircle, RotateCcw, Camera, Check } from 'lucide-react';
+import { Sparkles, Download, MessageCircle, ArrowLeft, AlertCircle, RotateCcw, Camera, Check, Brush, Layers } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 // Локальный (client-safe) аналог waHref — не импортируем из lib/settings,
@@ -15,8 +16,14 @@ function waLink(wa: string | null | undefined): string | null {
   return wa.startsWith("http") ? wa : `https://wa.me/${wa.replace(/[^\d]/g, "")}`;
 }
 
-type Surface = 'floor' | 'wall';
+type Mode = 'floor' | 'wall' | 'mask';
 type Stage = 'idle' | 'generating' | 'result' | 'error';
+
+const MODES: { id: Mode; label: string }[] = [
+  { id: 'mask', label: 'Выделить кистью' },
+  { id: 'floor', label: 'Пол' },
+  { id: 'wall', label: 'Стена' },
+];
 
 function VisualizePageInner() {
   const params = useSearchParams();
@@ -24,7 +31,12 @@ function VisualizePageInner() {
 
   const [photo, setPhoto] = useState<string | null>(null);
   const [selectedTile, setSelectedTile] = useState<CatalogTile | null>(null);
-  const [surface, setSurface] = useState<Surface>('floor');
+  const [mode, setMode] = useState<Mode>('mask');
+  const [maskHasStrokes, setMaskHasStrokes] = useState(false);
+  const maskRef = useRef<MaskCanvasHandle>(null);
+  // Маска последней генерации — чтобы «Попробуйте другую» на экране результата
+  // (где холст уже размонтирован) могла повторить запрос с той же областью.
+  const lastMaskRef = useRef<string | null>(null);
   const [stage, setStage] = useState<Stage>('idle');
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultMeta, setResultMeta] = useState<{ provider: string; durationMs: number } | null>(null);
@@ -51,10 +63,25 @@ function VisualizePageInner() {
       .catch(() => {});
   }, []);
 
-  const canGenerate = photo && selectedTile && stage !== 'generating';
+  const maskReady = mode !== 'mask' || maskHasStrokes;
+  const canGenerate = photo && selectedTile && maskReady && stage !== 'generating';
 
   async function generateFor(tile: CatalogTile) {
     if (!photo) return;
+
+    let maskImage: string | undefined;
+    if (mode === 'mask') {
+      // На экране ввода берём свежую маску с холста; при свапе плитки на экране
+      // результата холст размонтирован — переиспользуем прошлую маску.
+      maskImage = maskRef.current?.getMask() ?? lastMaskRef.current ?? undefined;
+      if (!maskImage) {
+        setErrorMsg('Выделите участок кистью на фото перед генерацией');
+        setStage('error');
+        return;
+      }
+      lastMaskRef.current = maskImage;
+    }
+
     setStage('generating');
     setErrorMsg(null);
     try {
@@ -64,7 +91,8 @@ function VisualizePageInner() {
         body: JSON.stringify({
           roomImage: photo,
           tileId: tile.slug,
-          surface,
+          surface: mode,
+          maskImage,
         }),
       });
       if (!res.ok) {
@@ -91,6 +119,20 @@ function VisualizePageInner() {
     setStage('idle');
     setResultUrl(null);
     setErrorMsg(null);
+  }
+
+  // Берём текущий результат как базу для следующего слоя — так комбинируем
+  // несколько клинкеров по очереди (выделил участок → плитка → генерация → повтор).
+  function handleContinue() {
+    if (!resultUrl) return;
+    setPhoto(resultUrl);
+    setMode('mask');
+    setMaskHasStrokes(false);
+    lastMaskRef.current = null;
+    maskRef.current?.clear();
+    setResultUrl(null);
+    setErrorMsg(null);
+    setStage('idle');
   }
 
   function handleSwapTile(tile: CatalogTile) {
@@ -139,6 +181,16 @@ function VisualizePageInner() {
           </div>
 
           <aside className="space-y-4">
+            <button
+              onClick={handleContinue}
+              className="btn-gold w-full !py-3 text-sm cursor-pointer"
+            >
+              <Layers size={16} /> Продолжить — добавить ещё клинкер
+            </button>
+            <p className="-mt-2 px-1 text-xs text-mist-400">
+              Возьмём этот результат за основу: выделите кистью другой участок и выберите второй материал.
+            </p>
+
             <div className="card p-5">
               <div className="text-xs uppercase tracking-wider text-mist-400">
                 Выбрано
@@ -253,9 +305,29 @@ function VisualizePageInner() {
         <div className="space-y-6">
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
-              Фото комнаты
+              {photo && mode === 'mask' ? 'Выделите участок' : 'Фото комнаты'}
             </h2>
-            <PhotoUploader value={photo} onChange={setPhoto} />
+            {photo && mode === 'mask' ? (
+              <div className="space-y-3">
+                <MaskCanvas
+                  ref={maskRef}
+                  imageSrc={photo}
+                  onMaskChange={setMaskHasStrokes}
+                />
+                <button
+                  onClick={() => {
+                    setPhoto(null);
+                    setMaskHasStrokes(false);
+                    lastMaskRef.current = null;
+                  }}
+                  className="text-xs text-mist-400 hover:text-gold-400 cursor-pointer"
+                >
+                  ← Сменить фото
+                </button>
+              </div>
+            ) : (
+              <PhotoUploader value={photo} onChange={setPhoto} />
+            )}
           </section>
 
           <section className="card p-5">
@@ -282,24 +354,30 @@ function VisualizePageInner() {
           {photo && (
             <section className="animate-slide-up">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
-                Поверхность
+                Что менять
               </h2>
-              <div className="grid grid-cols-2 gap-2">
-                {(['floor', 'wall'] as const).map((s) => (
+              <div className="grid grid-cols-3 gap-2">
+                {MODES.map((m) => (
                   <button
-                    key={s}
-                    onClick={() => setSurface(s)}
+                    key={m.id}
+                    onClick={() => setMode(m.id)}
                     className={cn(
-                      'rounded-xl border px-4 py-3 text-sm font-medium transition cursor-pointer',
-                      surface === s
+                      'inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-sm font-medium transition cursor-pointer',
+                      mode === m.id
                         ? 'border-gold-500 bg-gold-500/10 text-gold-400'
                         : 'border-white/10 text-mist-400 hover:border-white/30',
                     )}
                   >
-                    {s === 'floor' ? 'Пол' : 'Стена'}
+                    {m.id === 'mask' && <Brush size={15} />}
+                    {m.label}
                   </button>
                 ))}
               </div>
+              {mode === 'mask' && (
+                <p className="mt-2 text-xs text-mist-400">
+                  Закрасьте кистью участок на фото, затем выберите клинкер. Несколько материалов комбинируйте по очереди.
+                </p>
+              )}
             </section>
           )}
 
@@ -325,9 +403,11 @@ function VisualizePageInner() {
           <Sparkles size={18} />
           {!photo
             ? 'Загрузите фото комнаты'
-            : !selectedTile
-              ? 'Выберите плитку'
-              : 'Сгенерировать визуализацию'}
+            : mode === 'mask' && !maskHasStrokes
+              ? 'Выделите участок кистью'
+              : !selectedTile
+                ? 'Выберите плитку'
+                : 'Сгенерировать визуализацию'}
         </button>
         {photo && selectedTile && (
           <p className="text-xs text-mist-400">~15–30 секунд</p>
