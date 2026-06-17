@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getTileById } from '@/lib/tiles';
-import { visualize, type Provider } from '@/lib/ai';
+import { visualize, editFacadeViaGptImage, type Provider } from '@/lib/ai';
 import { lookupCache } from '@/lib/demo-cache';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { parseTileSize } from '@/lib/tile';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type Body = {
   roomImage: string;
@@ -14,6 +15,10 @@ type Body = {
   surface: 'floor' | 'wall' | 'mask';
   /** PNG-маска (data URL): белое = куда класть плитку. Обязательна при surface==='mask'. */
   maskImage?: string;
+  /** Реальная ширина выделенного участка стены, в метрах. Для корректного масштаба клинкера. */
+  regionWidthM?: number;
+  /** Реальная высота выделенного участка, в метрах. Даёт число рядов плиток. */
+  regionHeightM?: number;
   provider?: Provider;
 };
 
@@ -60,6 +65,7 @@ export async function POST(req: Request) {
   let tileName: string;
   let tileImageUrl: string;
   let tileKey: string;
+  let tileDimsRaw: string | null = null;
 
   if (staticTile) {
     tileName = `${staticTile.name} (${staticTile.texture}, ${staticTile.size})`;
@@ -67,6 +73,7 @@ export async function POST(req: Request) {
       ? staticTile.image
       : `${origin}${staticTile.image}`;
     tileKey = staticTile.id;
+    tileDimsRaw = staticTile.size;
   } else {
     // Look up in database by slug or id
     const dbProduct = await prisma.product.findFirst({
@@ -83,7 +90,48 @@ export async function POST(req: Request) {
     }
     tileImageUrl = img.startsWith('http') ? img : `${origin}${img}`;
     tileKey = dbProduct.slug;
+    tileDimsRaw = dbProduct.dimensions ?? null;
   }
+
+  const parsedDims = parseTileSize(tileDimsRaw);
+
+  // Основной движок — gpt-image-1 (через fal): понимает сцену, перспективу, окна/двери
+  // и накладывает плитку реалистично одним вызовом. Включается при наличии FAL_KEY.
+  if (process.env.FAL_KEY) {
+    try {
+      const started = Date.now();
+      const out = await editFacadeViaGptImage({
+        roomImageUrl: roomImage,
+        tileImageUrl,
+        tileName,
+        tileWmm: parsedDims?.w,
+        tileHmm: parsedDims?.h,
+        surface,
+        maskImageUrl: maskImage,
+      });
+      await logVisualization({
+        userId: user.id, tileSlug: tileKey, tileName, surface, provider: 'gpt-image-1',
+      });
+      return NextResponse.json({
+        imageUrl: out.imageUrl,
+        durationMs: Date.now() - started,
+        provider: 'gpt-image-1',
+        tile: { id: tileKey, name: tileName },
+      });
+    } catch (err) {
+      console.error('[visualize:gpt-image-1] fallback to legacy:', err);
+      // падаем в старый путь ниже
+    }
+  }
+
+  // Реальный масштаб (старый путь — Gemini/прочие провайдеры) для surface==='mask'.
+  const scale:
+    | { tilesAcross: number; tilesDown?: number; tileWmm: number; tileHmm: number }
+    | undefined = undefined;
+
+  // Для floor/wall числа плиток не считаем, но реальные размеры плитки передаём.
+  const tileDims =
+    surface !== 'mask' && parsedDims ? { wmm: parsedDims.w, hmm: parsedDims.h } : undefined;
 
   // Маска уникальна на каждый запрос — кэш демо-сцен здесь не применим.
   const cachedProvider = provider || 'auto';
@@ -113,6 +161,8 @@ export async function POST(req: Request) {
       tileName,
       surface,
       maskImageUrl: maskImage,
+      scale,
+      tileDims,
       provider,
     });
 

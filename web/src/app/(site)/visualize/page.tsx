@@ -66,13 +66,13 @@ function VisualizePageInner() {
   const maskReady = mode !== 'mask' || maskHasStrokes;
   const canGenerate = photo && selectedTile && maskReady && stage !== 'generating';
 
+  // Генерация через gpt-image-1 (сервер): модель сама распознаёт сцену, перспективу,
+  // окна/двери и накладывает плитку реалистично. Для режима кисти добавляем маску.
   async function generateFor(tile: CatalogTile) {
     if (!photo) return;
 
     let maskImage: string | undefined;
     if (mode === 'mask') {
-      // На экране ввода берём свежую маску с холста; при свапе плитки на экране
-      // результата холст размонтирован — переиспользуем прошлую маску.
       maskImage = maskRef.current?.getMask() ?? lastMaskRef.current ?? undefined;
       if (!maskImage) {
         setErrorMsg('Выделите участок кистью на фото перед генерацией');
@@ -111,7 +111,7 @@ function VisualizePageInner() {
   }
 
   function handleGenerate() {
-    if (!selectedTile) return;
+    if (!selectedTile || !photo) return;
     generateFor(selectedTile);
   }
 
@@ -135,7 +135,7 @@ function VisualizePageInner() {
     setStage('idle');
   }
 
-  function handleSwapTile(tile: CatalogTile) {
+  async function handleSwapTile(tile: CatalogTile) {
     setSelectedTile(tile);
     generateFor(tile);
   }
@@ -172,9 +172,9 @@ function VisualizePageInner() {
               <div className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-gold-500 px-3 py-1 text-xs font-semibold text-ink-900">
                 <Sparkles size={12} /> ИИ-визуализация
               </div>
-              {resultMeta && (
+              {resultMeta && resultMeta.durationMs > 0 && (
                 <div className="absolute right-4 top-4 rounded-full bg-ink-900/80 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-mist-200 backdrop-blur">
-                  {resultMeta.provider} · {(resultMeta.durationMs / 1000).toFixed(1)}s
+                  {(resultMeta.durationMs / 1000).toFixed(0)}s
                 </div>
               )}
             </div>
@@ -314,6 +314,11 @@ function VisualizePageInner() {
                   imageSrc={photo}
                   onMaskChange={setMaskHasStrokes}
                 />
+                <p className="text-xs text-mist-400">
+                  Обведите участок — ИИ распознает стену, окна и двери и наложит плитку по реальной
+                  перспективе фасада, не задевая проёмы.
+                </p>
+
                 <button
                   onClick={() => {
                     setPhoto(null);
@@ -375,7 +380,7 @@ function VisualizePageInner() {
               </div>
               {mode === 'mask' && (
                 <p className="mt-2 text-xs text-mist-400">
-                  Закрасьте кистью участок на фото, затем выберите клинкер. Несколько материалов комбинируйте по очереди.
+                  Обведите участок прямоугольником (или закрасьте кистью), затем выберите клинкер. Несколько материалов комбинируйте по очереди.
                 </p>
               )}
             </section>

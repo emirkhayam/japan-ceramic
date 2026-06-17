@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react';
 import { cn } from '@/lib/cn';
-import { Brush, Eraser, Trash2 } from 'lucide-react';
+import { Brush, Square, Trash2 } from 'lucide-react';
 
 export type MaskCanvasHandle = {
   /** PNG data URL: белая зона = куда класть плитку, чёрный фон = не трогать. null если ничего не нарисовано. */
@@ -23,10 +23,11 @@ type Props = {
   onMaskChange?: (hasStrokes: boolean) => void;
 };
 
-type Tool = 'brush' | 'eraser';
+type Tool = 'brush' | 'rect';
 
 // Подсветка выделения для пользователя (золото бренда). Маска для AI строится отдельно — чисто белой.
 const HIGHLIGHT = 'rgba(206, 173, 120, 0.55)';
+const HIGHLIGHT_LINE = 'rgba(206, 173, 120, 0.95)';
 
 export const MaskCanvas = forwardRef<MaskCanvasHandle, Props>(function MaskCanvas(
   { imageSrc, onMaskChange },
@@ -38,13 +39,18 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, Props>(function MaskCanva
   // Скрытый холст-маска (чисто белое на чёрном) в натуральном разрешении.
   const maskRef = useRef<HTMLCanvasElement>(null);
 
-  const [tool, setTool] = useState<Tool>('brush');
+  const [tool, setTool] = useState<Tool>('rect');
   const [brush, setBrush] = useState(48);
   const [ready, setReady] = useState(false);
   const [hasStrokes, setHasStrokes] = useState(false);
 
   const drawing = useRef(false);
   const lastPt = useRef<{ x: number; y: number } | null>(null);
+  // Для прямоугольного выделения: старт перетаскивания + снимки холстов,
+  // чтобы во время рисования показывать «резиновый» прямоугольник.
+  const rectStart = useRef<{ x: number; y: number } | null>(null);
+  const snapView = useRef<ImageData | null>(null);
+  const snapMask = useRef<ImageData | null>(null);
 
   // Инициализация холстов под натуральный размер фото.
   const initCanvases = useCallback(() => {
@@ -85,13 +91,12 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, Props>(function MaskCanva
     return { x, y };
   }, []);
 
+  // Кисть: рисуем линию-мазок на обоих холстах.
   const stroke = useCallback(
     (from: { x: number; y: number } | null, to: { x: number; y: number }) => {
       const view = viewRef.current?.getContext('2d');
       const mask = maskRef.current?.getContext('2d');
       if (!view || !mask) return;
-
-      const erase = tool === 'eraser';
       for (const [ctx, color] of [
         [view, HIGHLIGHT] as const,
         [mask, '#fff'] as const,
@@ -99,16 +104,9 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, Props>(function MaskCanva
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.lineWidth = brush;
-        ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
-        // У маски ластик должен возвращать чёрный фон, а не прозрачность.
-        if (erase && ctx === mask) {
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.strokeStyle = '#000';
-          ctx.fillStyle = '#000';
-        } else {
-          ctx.strokeStyle = color;
-          ctx.fillStyle = color;
-        }
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
         ctx.beginPath();
         if (from) {
           ctx.moveTo(from.x, from.y);
@@ -119,28 +117,55 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, Props>(function MaskCanva
         ctx.beginPath();
         ctx.arc(to.x, to.y, brush / 2, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
       }
     },
-    [brush, tool],
+    [brush],
   );
+
+  // Прямоугольник: нормализуем углы в {x,y,w,h}.
+  const rectFrom = (
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ) => ({
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    w: Math.abs(b.x - a.x),
+    h: Math.abs(b.y - a.y),
+  });
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!ready) return;
       e.preventDefault();
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      try {
+        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      } catch {
+        /* указатель мог уже отпуститься — не критично */
+      }
       drawing.current = true;
       const pt = toImageCoords(e);
       if (!pt) return;
+
+      if (tool === 'rect') {
+        rectStart.current = pt;
+        const v = viewRef.current?.getContext('2d');
+        const m = maskRef.current?.getContext('2d');
+        // Запоминаем текущее состояние, чтобы «резиновый» прямоугольник не затирал прежние выделения.
+        if (v && viewRef.current)
+          snapView.current = v.getImageData(0, 0, viewRef.current.width, viewRef.current.height);
+        if (m && maskRef.current)
+          snapMask.current = m.getImageData(0, 0, maskRef.current.width, maskRef.current.height);
+        return;
+      }
+
       lastPt.current = pt;
       stroke(null, pt);
-      if (!hasStrokes && tool === 'brush') {
+      if (!hasStrokes) {
         setHasStrokes(true);
         onMaskChange?.(true);
       }
     },
-    [ready, toImageCoords, stroke, hasStrokes, tool, onMaskChange],
+    [ready, tool, toImageCoords, stroke, hasStrokes, onMaskChange],
   );
 
   const onPointerMove = useCallback(
@@ -149,16 +174,59 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, Props>(function MaskCanva
       e.preventDefault();
       const pt = toImageCoords(e);
       if (!pt) return;
+
+      if (tool === 'rect') {
+        if (!rectStart.current) return;
+        const v = viewRef.current?.getContext('2d');
+        if (!v || !snapView.current) return;
+        // Перерисовываем предпросмотр поверх сохранённого состояния.
+        v.putImageData(snapView.current, 0, 0);
+        const r = rectFrom(rectStart.current, pt);
+        v.fillStyle = HIGHLIGHT;
+        v.fillRect(r.x, r.y, r.w, r.h);
+        v.strokeStyle = HIGHLIGHT_LINE;
+        v.lineWidth = 2;
+        v.strokeRect(r.x, r.y, r.w, r.h);
+        return;
+      }
+
       stroke(lastPt.current, pt);
       lastPt.current = pt;
     },
-    [toImageCoords, stroke],
+    [tool, toImageCoords, stroke],
   );
 
-  const onPointerUp = useCallback(() => {
-    drawing.current = false;
-    lastPt.current = null;
-  }, []);
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      if (tool === 'rect' && drawing.current && rectStart.current) {
+        const pt = toImageCoords(e);
+        const v = viewRef.current?.getContext('2d');
+        const m = maskRef.current?.getContext('2d');
+        // Возвращаем сохранённое состояние, затем фиксируем прямоугольник на обоих холстах.
+        if (v && snapView.current) v.putImageData(snapView.current, 0, 0);
+        if (m && snapMask.current) m.putImageData(snapMask.current, 0, 0);
+        if (pt && v && m) {
+          const r = rectFrom(rectStart.current, pt);
+          if (r.w > 3 && r.h > 3) {
+            v.fillStyle = HIGHLIGHT;
+            v.fillRect(r.x, r.y, r.w, r.h);
+            m.fillStyle = '#fff';
+            m.fillRect(r.x, r.y, r.w, r.h);
+            if (!hasStrokes) {
+              setHasStrokes(true);
+              onMaskChange?.(true);
+            }
+          }
+        }
+        rectStart.current = null;
+        snapView.current = null;
+        snapMask.current = null;
+      }
+      drawing.current = false;
+      lastPt.current = null;
+    },
+    [tool, toImageCoords, hasStrokes, onMaskChange],
+  );
 
   const clear = useCallback(() => {
     const view = viewRef.current;
@@ -210,7 +278,11 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, Props>(function MaskCanva
         />
         <canvas ref={maskRef} className="hidden" />
         <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-ink-900/80 px-3 py-1 text-xs font-medium text-mist-100 backdrop-blur">
-          {hasStrokes ? 'Участок выделен' : 'Закрасьте нужный участок'}
+          {hasStrokes
+            ? 'Участок выделен'
+            : tool === 'rect'
+              ? 'Обведите участок прямоугольником'
+              : 'Закрасьте нужный участок'}
         </div>
       </div>
 
@@ -218,9 +290,21 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, Props>(function MaskCanva
         <div className="inline-flex overflow-hidden rounded-xl border border-white/10">
           <button
             type="button"
-            onClick={() => setTool('brush')}
+            onClick={() => setTool('rect')}
             className={cn(
               'inline-flex items-center gap-1.5 px-3 py-2 text-sm transition cursor-pointer',
+              tool === 'rect'
+                ? 'bg-gold-500/15 text-gold-400'
+                : 'text-mist-400 hover:text-mist-100',
+            )}
+          >
+            <Square size={15} /> Прямоугольник
+          </button>
+          <button
+            type="button"
+            onClick={() => setTool('brush')}
+            className={cn(
+              'inline-flex items-center gap-1.5 border-l border-white/10 px-3 py-2 text-sm transition cursor-pointer',
               tool === 'brush'
                 ? 'bg-gold-500/15 text-gold-400'
                 : 'text-mist-400 hover:text-mist-100',
@@ -228,36 +312,26 @@ export const MaskCanvas = forwardRef<MaskCanvasHandle, Props>(function MaskCanva
           >
             <Brush size={15} /> Кисть
           </button>
-          <button
-            type="button"
-            onClick={() => setTool('eraser')}
-            className={cn(
-              'inline-flex items-center gap-1.5 border-l border-white/10 px-3 py-2 text-sm transition cursor-pointer',
-              tool === 'eraser'
-                ? 'bg-gold-500/15 text-gold-400'
-                : 'text-mist-400 hover:text-mist-100',
-            )}
-          >
-            <Eraser size={15} /> Ластик
-          </button>
         </div>
 
-        <label className="flex flex-1 items-center gap-2 text-xs text-mist-400">
-          Размер
-          <input
-            type="range"
-            min={12}
-            max={140}
-            value={brush}
-            onChange={(e) => setBrush(Number(e.target.value))}
-            className="flex-1 accent-gold-500"
-          />
-        </label>
+        {tool === 'brush' && (
+          <label className="flex flex-1 items-center gap-2 text-xs text-mist-400">
+            Размер
+            <input
+              type="range"
+              min={12}
+              max={140}
+              value={brush}
+              onChange={(e) => setBrush(Number(e.target.value))}
+              className="flex-1 accent-gold-500"
+            />
+          </label>
+        )}
 
         <button
           type="button"
           onClick={clear}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm text-mist-400 transition hover:text-mist-100 cursor-pointer"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm text-mist-400 transition hover:text-mist-100 cursor-pointer"
         >
           <Trash2 size={15} /> Очистить
         </button>
