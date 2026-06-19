@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getTileById } from '@/lib/tiles';
-import { visualize, editFacadeViaGptImage, type Provider } from '@/lib/ai';
+import { visualize, submitGptImageJob, type Provider } from '@/lib/ai';
 import { lookupCache } from '@/lib/demo-cache';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -96,11 +96,12 @@ export async function POST(req: Request) {
   const parsedDims = parseTileSize(tileDimsRaw);
 
   // Основной движок — gpt-image-1 (через fal): понимает сцену, перспективу, окна/двери
-  // и накладывает плитку реалистично одним вызовом. Включается при наличии FAL_KEY.
+  // и накладывает плитку реалистично. Рендер ~60-90с, поэтому НЕ ждём его в этом запросе
+  // (иначе прокси рвёт соединение → 504), а ставим в очередь fal и отдаём requestId.
+  // Клиент опрашивает /api/visualize/status. Включается при наличии FAL_KEY.
   if (process.env.FAL_KEY) {
     try {
-      const started = Date.now();
-      const out = await editFacadeViaGptImage({
+      const { requestId } = await submitGptImageJob({
         roomImageUrl: roomImage,
         tileImageUrl,
         tileName,
@@ -109,17 +110,19 @@ export async function POST(req: Request) {
         surface,
         maskImageUrl: maskImage,
       });
+      // Лог пишем при постановке задачи — здесь весь контекст (юзер/плитка/поверхность);
+      // токены у gpt-image-1 не отдаются (usageMetadata только у Gemini), поэтому нули.
       await logVisualization({
         userId: user.id, tileSlug: tileKey, tileName, surface, provider: 'gpt-image-1',
       });
       return NextResponse.json({
-        imageUrl: out.imageUrl,
-        durationMs: Date.now() - started,
+        async: true,
+        requestId,
         provider: 'gpt-image-1',
         tile: { id: tileKey, name: tileName },
       });
     } catch (err) {
-      console.error('[visualize:gpt-image-1] fallback to legacy:', err);
+      console.error('[visualize:gpt-image-1] submit failed, fallback to legacy:', err);
       // падаем в старый путь ниже
     }
   }

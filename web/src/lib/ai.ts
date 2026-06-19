@@ -751,7 +751,9 @@ async function fetchToBuffer(url: string): Promise<Buffer> {
 // ---------- Прямое редактирование фасада через gpt-image-1 (fal) ----------
 // Та самая модель, что в ChatGPT: понимает сцену, перспективу, окна/двери и накладывает
 // плитку реалистично одним вызовом. На вход — фото дома + образец плитки + промпт.
-export async function editFacadeViaGptImage(input: {
+const GPT_IMAGE_ENDPOINT = 'fal-ai/gpt-image-1/edit-image';
+
+export type GptImageInput = {
   roomImageUrl: string;
   tileImageUrl: string;
   tileName: string;
@@ -761,11 +763,11 @@ export async function editFacadeViaGptImage(input: {
   /** Маска кисти (белое=куда класть). Только для surface==='mask' — передаётся как IMAGE 3. */
   maskImageUrl?: string;
   quality?: 'low' | 'medium' | 'high';
-}): Promise<ProviderOutput> {
-  const key = process.env.FAL_KEY;
-  if (!key) throw new Error('FAL_KEY не задан');
-  fal.config({ credentials: key });
+};
 
+// Сборка входа для gpt-image-1 — общая для синхронного (subscribe) и асинхронного
+// (queue.submit) путей, чтобы промпт/формат/маска не разъезжались между ними.
+async function buildGptImageInput(input: GptImageInput) {
   const useMask = input.surface === 'mask' && !!input.maskImageUrl;
   const surfaceWord =
     input.surface === 'floor'
@@ -798,20 +800,74 @@ Output a single photorealistic edited photograph, nothing else.`;
   // сохранить кадрирование.
   const image_size = await pickGptImageSize(input.roomImageUrl);
 
-  const result = (await fal.subscribe('fal-ai/gpt-image-1/edit-image', {
-    input: {
-      prompt,
-      image_urls,
-      input_fidelity: 'high',
-      quality: input.quality ?? 'high',
-      image_size,
-      output_format: 'jpeg',
-    },
+  return {
+    prompt,
+    image_urls,
+    input_fidelity: 'high' as const,
+    quality: input.quality ?? ('high' as const),
+    image_size,
+    output_format: 'jpeg' as const,
+  };
+}
+
+type GptImageResult = { images?: { url?: string }[]; data?: { images?: { url?: string }[] } };
+
+// Синхронный рендер (subscribe держит соединение весь рендер ~60-90с). Подходит для
+// локали/скриптов; на проде за прокси с таймаутом используем очередь — см. submit/poll.
+export async function editFacadeViaGptImage(input: GptImageInput): Promise<ProviderOutput> {
+  const key = process.env.FAL_KEY;
+  if (!key) throw new Error('FAL_KEY не задан');
+  fal.config({ credentials: key });
+
+  const falInput = await buildGptImageInput(input);
+  const result = (await fal.subscribe(GPT_IMAGE_ENDPOINT, {
+    input: falInput,
     logs: false,
-  })) as { images?: { url?: string }[]; data?: { images?: { url?: string }[] } };
+  })) as GptImageResult;
   const url = result?.images?.[0]?.url ?? result?.data?.images?.[0]?.url;
   if (!url) throw new Error('gpt-image-1: ответ без URL картинки');
   return { imageUrl: url };
+}
+
+// Асинхронно: ставим рендер в очередь fal и сразу возвращаем requestId — HTTP-запрос
+// НЕ ждёт рендер, поэтому таймауты Cloudflare/Caddy (504/524) больше не при чём.
+export async function submitGptImageJob(input: GptImageInput): Promise<{ requestId: string }> {
+  const key = process.env.FAL_KEY;
+  if (!key) throw new Error('FAL_KEY не задан');
+  fal.config({ credentials: key });
+
+  const falInput = await buildGptImageInput(input);
+  const submitted = (await fal.queue.submit(GPT_IMAGE_ENDPOINT, {
+    input: falInput,
+  })) as { request_id: string };
+  return { requestId: submitted.request_id };
+}
+
+export type GptImageJobState =
+  | { status: 'in_progress' }
+  | { status: 'completed'; imageUrl: string }
+  | { status: 'failed'; error: string };
+
+// Опрос статуса очереди. Пока не COMPLETED → in_progress; на готовности забираем результат.
+export async function pollGptImageJob(requestId: string): Promise<GptImageJobState> {
+  const key = process.env.FAL_KEY;
+  if (!key) throw new Error('FAL_KEY не задан');
+  fal.config({ credentials: key });
+
+  const st = (await fal.queue.status(GPT_IMAGE_ENDPOINT, {
+    requestId,
+    logs: false,
+  })) as { status?: string };
+  if (st.status !== 'COMPLETED') return { status: 'in_progress' };
+
+  try {
+    const result = (await fal.queue.result(GPT_IMAGE_ENDPOINT, { requestId })) as GptImageResult;
+    const url = result?.data?.images?.[0]?.url ?? result?.images?.[0]?.url;
+    if (!url) return { status: 'failed', error: 'gpt-image-1: ответ без URL картинки' };
+    return { status: 'completed', imageUrl: url };
+  } catch (err) {
+    return { status: 'failed', error: err instanceof Error ? err.message : 'gpt-image-1: ошибка рендера' };
+  }
 }
 
 // Подбор формата вывода gpt-image-1 под пропорцию исходного фото (чтобы не обрезал/зумил).

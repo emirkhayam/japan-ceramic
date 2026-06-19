@@ -66,6 +66,24 @@ function VisualizePageInner() {
   const maskReady = mode !== 'mask' || maskHasStrokes;
   const canGenerate = photo && selectedTile && maskReady && stage !== 'generating';
 
+  // Опрос статуса асинхронного рендера до готовности (или ошибки/таймаута).
+  async function pollVisualization(requestId: string): Promise<string> {
+    const deadline = Date.now() + 4 * 60 * 1000; // ждём максимум 4 минуты
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const res = await fetch(`/api/visualize/status?requestId=${encodeURIComponent(requestId)}`);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Сервер вернул ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.status === 'completed' && data.imageUrl) return data.imageUrl as string;
+      if (data.status === 'failed') throw new Error(data.error || 'Генерация не удалась');
+      // data.status === 'in_progress' → продолжаем опрос
+    }
+    throw new Error('Превышено время ожидания генерации');
+  }
+
   // Генерация через gpt-image-1 (сервер): модель сама распознаёт сцену, перспективу,
   // окна/двери и накладывает плитку реалистично. Для режима кисти добавляем маску.
   async function generateFor(tile: CatalogTile) {
@@ -100,9 +118,20 @@ function VisualizePageInner() {
         throw new Error(data.error || `Сервер вернул ${res.status}`);
       }
       const data = await res.json();
-      setResultUrl(data.imageUrl);
-      setResultMeta({ provider: data.provider, durationMs: data.durationMs });
-      setStage('result');
+      // Асинхронный путь (gpt-image-1 через очередь fal): сервер вернул requestId, рендер
+      // идёт в фоне — опрашиваем статус, пока не будет готовой картинки. Так длинный рендер
+      // (~60-90с) не упирается в таймаут прокси.
+      if (data.async && data.requestId) {
+        const startedAt = Date.now();
+        const imageUrl = await pollVisualization(data.requestId);
+        setResultUrl(imageUrl);
+        setResultMeta({ provider: data.provider, durationMs: Date.now() - startedAt });
+        setStage('result');
+      } else {
+        setResultUrl(data.imageUrl);
+        setResultMeta({ provider: data.provider, durationMs: data.durationMs });
+        setStage('result');
+      }
     } catch (err) {
       console.error(err);
       setErrorMsg(err instanceof Error ? err.message : 'Неизвестная ошибка');
