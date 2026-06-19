@@ -15,14 +15,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Войдите в аккаунт' }, { status: 401 });
   }
 
-  let body: { resultUrl?: string; roomImage?: string; maskImage?: string };
+  let body: { resultUrl?: string; roomImage?: string; maskImage?: string; segRequestId?: string | null };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { resultUrl, roomImage, maskImage } = body;
+  const { resultUrl, roomImage, maskImage, segRequestId } = body;
   if (!resultUrl || !roomImage || !maskImage) {
     return NextResponse.json(
       { error: 'resultUrl, roomImage и maskImage обязательны' },
@@ -35,8 +35,7 @@ export async function POST(req: Request) {
       roomImageUrl: roomImage,
       resultUrl,
       maskUrl: maskImage,
-      excludeOpenings: true,
-      surface: 'wall',
+      segRequestId: segRequestId ?? null,
     });
     return NextResponse.json({ imageUrl });
   } catch (err) {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getTileById } from '@/lib/tiles';
-import { visualize, submitGptImageJob, type Provider } from '@/lib/ai';
+import { visualize, submitGptImageJob, submitEvfSamJob, type Provider } from '@/lib/ai';
 import { lookupCache } from '@/lib/demo-cache';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -101,15 +101,26 @@ export async function POST(req: Request) {
   // Клиент опрашивает /api/visualize/status. Включается при наличии FAL_KEY.
   if (process.env.FAL_KEY) {
     try {
-      const { requestId } = await submitGptImageJob({
-        roomImageUrl: roomImage,
-        tileImageUrl,
-        tileName,
-        tileWmm: parsedDims?.w,
-        tileHmm: parsedDims?.h,
-        surface,
-        maskImageUrl: maskImage,
-      });
+      // Для режима выделения параллельно запускаем EVF-SAM-сегментацию поверхности —
+      // её холодный старт (~78с) перекрывается рендером, а composite заберёт результат
+      // по segRequestId и вычтет окна/двери из выбранной зоны.
+      const [gpt, seg] = await Promise.all([
+        submitGptImageJob({
+          roomImageUrl: roomImage,
+          tileImageUrl,
+          tileName,
+          tileWmm: parsedDims?.w,
+          tileHmm: parsedDims?.h,
+          surface,
+          maskImageUrl: maskImage,
+        }),
+        surface === 'mask'
+          ? submitEvfSamJob({ imageUrl: roomImage, surface: 'wall' }).catch((e) => {
+              console.error('[visualize:evf-sam] submit failed (продолжим без исключения проёмов):', e);
+              return null;
+            })
+          : Promise.resolve(null),
+      ]);
       // Лог пишем при постановке задачи — здесь весь контекст (юзер/плитка/поверхность);
       // токены у gpt-image-1 не отдаются (usageMetadata только у Gemini), поэтому нули.
       await logVisualization({
@@ -117,7 +128,8 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({
         async: true,
-        requestId,
+        requestId: gpt.requestId,
+        segRequestId: seg?.requestId ?? null,
         provider: 'gpt-image-1',
         tile: { id: tileKey, name: tileName },
       });

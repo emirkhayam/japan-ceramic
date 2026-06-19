@@ -131,7 +131,7 @@ function VisualizePageInner() {
           const cmp = await fetch('/api/visualize/composite', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ resultUrl: imageUrl, roomImage: photo, maskImage }),
+            body: JSON.stringify({ resultUrl: imageUrl, roomImage: photo, maskImage, segRequestId: data.segRequestId ?? null }),
           });
           if (!cmp.ok) {
             const d = await cmp.json().catch(() => ({}));

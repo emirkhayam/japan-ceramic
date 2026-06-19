@@ -751,17 +751,14 @@ export async function compositeMaskedResult(input: {
   roomImageUrl: string;
   resultUrl: string;
   maskUrl: string;
-  /** Вычесть окна/двери из маски через EVF-SAM, чтобы и внутри выделения проёмы не зашивались. */
-  excludeOpenings?: boolean;
-  surface?: 'floor' | 'wall';
+  /** requestId заранее запущенной (параллельно с рендером) EVF-SAM-сегментации поверхности.
+   *  Если задан и маска успеет — окна/двери вычитаются из зоны; иначе обрезаем только по выделению. */
+  segRequestId?: string | null;
 }): Promise<string> {
   let effectiveMask = input.maskUrl;
-  if (input.excludeOpenings) {
-    const surfaceMask = await segmentSurfaceMask({
-      imageUrl: input.roomImageUrl,
-      surface: input.surface ?? 'wall',
-    });
-    // null (нет FAL_KEY / ошибка сегментации) → мягкий откат: обрезаем только по выделению.
+  if (input.segRequestId) {
+    const surfaceMask = await fetchEvfSamMask(input.segRequestId);
+    // null (не успела / ошибка) → мягкий откат: обрезаем только по выделению.
     if (surfaceMask) {
       effectiveMask = await intersectMasks(input.maskUrl, surfaceMask, input.roomImageUrl);
     }
@@ -962,8 +959,9 @@ export async function segmentSurfaceMask(input: {
         fill_holes: true,
       },
       logs: false,
-    })) as { image?: { url?: string } };
-    const url = result?.image?.url;
+    })) as EvfSamResult;
+    // fal.subscribe отдаёт { data, requestId } — маска лежит в data.image.url.
+    const url = result?.data?.image?.url ?? result?.image?.url;
     if (!url) return null;
     const buf = await fetchToBuffer(url);
     return `data:image/png;base64,${buf.toString('base64')}`;
@@ -971,6 +969,54 @@ export async function segmentSurfaceMask(input: {
     console.error('[segmentSurfaceMask]', e);
     return null;
   }
+}
+
+const EVF_SAM_ENDPOINT = 'fal-ai/evf-sam';
+const EVF_SAM_NEGATIVE =
+  'door, gate, garage door, window, glass, balcony, lamp, light fixture, sconce, sign, pipe, downspout, plant, bush, tree, sky, roof, person, car';
+type EvfSamResult = { image?: { url?: string }; data?: { image?: { url?: string } } };
+
+// Асинхронно ставим EVF-SAM-сегментацию в очередь fal — чтобы запустить ПАРАЛЛЕЛЬНО с
+// рендером gpt-image-1 (холодный старт EVF-SAM ~78с перекрывается рендером, а не висит
+// отдельным синхронным запросом → не упирается в таймаут прокси).
+export async function submitEvfSamJob(input: {
+  imageUrl: string;
+  surface: 'floor' | 'wall';
+}): Promise<{ requestId: string }> {
+  const key = process.env.FAL_KEY;
+  if (!key) throw new Error('FAL_KEY не задан');
+  fal.config({ credentials: key });
+
+  const prompt = input.surface === 'floor' ? 'floor, ground, paving' : 'wall, building facade wall surface';
+  const submitted = (await fal.queue.submit(EVF_SAM_ENDPOINT, {
+    input: { image_url: input.imageUrl, prompt, negative_prompt: EVF_SAM_NEGATIVE, mask_only: true, fill_holes: true },
+  })) as { request_id: string };
+  return { requestId: submitted.request_id };
+}
+
+// Забираем готовую маску EVF-SAM по requestId (задача уже запущена параллельно).
+// Ждём максимум timeoutMs; не готово/ошибка → null (composite откатится на обрезку без проёмов).
+export async function fetchEvfSamMask(requestId: string, timeoutMs = 20000): Promise<string | null> {
+  const key = process.env.FAL_KEY;
+  if (!key) return null;
+  fal.config({ credentials: key });
+  const deadline = Date.now() + timeoutMs;
+  try {
+    while (Date.now() < deadline) {
+      const st = (await fal.queue.status(EVF_SAM_ENDPOINT, { requestId, logs: false })) as { status?: string };
+      if (st.status === 'COMPLETED') {
+        const result = (await fal.queue.result(EVF_SAM_ENDPOINT, { requestId })) as EvfSamResult;
+        const url = result?.data?.image?.url ?? result?.image?.url;
+        if (!url) return null;
+        const buf = await fetchToBuffer(url);
+        return `data:image/png;base64,${buf.toString('base64')}`;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  } catch (e) {
+    console.error('[fetchEvfSamMask]', e);
+  }
+  return null;
 }
 
 // ---------- Mock ----------
