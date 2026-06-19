@@ -25,9 +25,9 @@ export async function POST(request: NextRequest) {
   }
 
   const isDocument = file.type === "application/pdf" || file.type.includes("zip");
-  const maxSize = 50 * 1024 * 1024;
+  const maxSize = 100 * 1024 * 1024;
   if (file.size > maxSize) {
-    return NextResponse.json({ error: "Файл слишком большой (макс. 50MB)" }, { status: 400 });
+    return NextResponse.json({ error: "Файл слишком большой (макс. 100MB)" }, { status: 400 });
   }
 
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
