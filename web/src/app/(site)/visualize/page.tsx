@@ -123,7 +123,23 @@ function VisualizePageInner() {
       // (~60-90с) не упирается в таймаут прокси.
       if (data.async && data.requestId) {
         const startedAt = Date.now();
-        const imageUrl = await pollVisualization(data.requestId);
+        let imageUrl = await pollVisualization(data.requestId);
+        // gpt-image-1 не умеет нативную маску и перекладывает весь фасад. В режиме
+        // выделения детерминированно обрезаем результат по маске (вне зоны — оригинал,
+        // окна/двери внутри зоны исключаются) на сервере.
+        if (mode === 'mask' && maskImage) {
+          const cmp = await fetch('/api/visualize/composite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resultUrl: imageUrl, roomImage: photo, maskImage }),
+          });
+          if (!cmp.ok) {
+            const d = await cmp.json().catch(() => ({}));
+            throw new Error(d.error || `Сервер вернул ${cmp.status}`);
+          }
+          const cmpData = await cmp.json();
+          imageUrl = cmpData.imageUrl;
+        }
         setResultUrl(imageUrl);
         setResultMeta({ provider: data.provider, durationMs: Date.now() - startedAt });
         setStage('result');

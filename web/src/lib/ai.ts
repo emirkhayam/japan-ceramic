@@ -691,7 +691,7 @@ async function refineViaReplicate(input: RefineInput): Promise<string> {
 
 // Накладывает overlay поверх base ТОЛЬКО внутри белой зоны маски (через sharp).
 // Так пиксели вне зоны плитки остаются исходными до пикселя.
-async function maskedRecompose(baseUrl: string, overlayUrl: string, maskUrl: string): Promise<string> {
+export async function maskedRecompose(baseUrl: string, overlayUrl: string, maskUrl: string): Promise<string> {
   const sharp = (await import('sharp')).default;
   const [baseBuf, overlayBuf, maskBuf] = await Promise.all([
     fetchToBuffer(baseUrl),
@@ -718,6 +718,55 @@ async function maskedRecompose(baseUrl: string, overlayUrl: string, maskUrl: str
     .jpeg({ quality: 92 })
     .toBuffer();
   return `data:image/jpeg;base64,${composed.toString('base64')}`;
+}
+
+// Пересечение двух масок (логическое AND через перемножение яркостей): белое только там,
+// где обе белые. Используем, чтобы из выделения пользователя вычесть не-поверхность
+// (окна/двери), оставив белым лишь «внутри выделения И на стене». Размер берём по sizeRef.
+async function intersectMasks(maskAUrl: string, maskBUrl: string, sizeRefUrl: string): Promise<string> {
+  const sharp = (await import('sharp')).default;
+  const [aBuf, bBuf, refBuf] = await Promise.all([
+    fetchToBuffer(maskAUrl),
+    fetchToBuffer(maskBUrl),
+    fetchToBuffer(sizeRefUrl),
+  ]);
+  const refMeta = await sharp(refBuf).metadata();
+  const W = refMeta.width ?? 0;
+  const H = refMeta.height ?? 0;
+  if (!W || !H) return maskAUrl;
+
+  const a = await sharp(aBuf).resize(W, H, { fit: 'fill' }).greyscale().toColourspace('b-w').toBuffer();
+  const b = await sharp(bBuf).resize(W, H, { fit: 'fill' }).greyscale().toColourspace('b-w').png().toBuffer();
+  const out = await sharp(a)
+    .composite([{ input: b, blend: 'multiply' }]) // бел×бел=бел, бел×чёрн=чёрн → AND
+    .png()
+    .toBuffer();
+  return `data:image/png;base64,${out.toString('base64')}`;
+}
+
+// Детерминированная обрезка результата AI по маске выделения (+ опц. исключение проёмов).
+// Нужна потому, что gpt-image-1 не имеет нативной маски и перекладывает весь фасад —
+// здесь мы оставляем плитку только в выбранной зоне, а вне её пиксели = оригинал.
+export async function compositeMaskedResult(input: {
+  roomImageUrl: string;
+  resultUrl: string;
+  maskUrl: string;
+  /** Вычесть окна/двери из маски через EVF-SAM, чтобы и внутри выделения проёмы не зашивались. */
+  excludeOpenings?: boolean;
+  surface?: 'floor' | 'wall';
+}): Promise<string> {
+  let effectiveMask = input.maskUrl;
+  if (input.excludeOpenings) {
+    const surfaceMask = await segmentSurfaceMask({
+      imageUrl: input.roomImageUrl,
+      surface: input.surface ?? 'wall',
+    });
+    // null (нет FAL_KEY / ошибка сегментации) → мягкий откат: обрезаем только по выделению.
+    if (surfaceMask) {
+      effectiveMask = await intersectMasks(input.maskUrl, surfaceMask, input.roomImageUrl);
+    }
+  }
+  return maskedRecompose(input.roomImageUrl, input.resultUrl, effectiveMask);
 }
 
 // Уменьшает картинку до maxEdge по длинной стороне и возвращает data URL (jpeg).
