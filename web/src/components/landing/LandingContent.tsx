@@ -211,9 +211,9 @@ export default function LandingContent({ user, collections, categories, contacts
         </div>
         <div className="wrap hero-inner">
           <div className="hero-card">
-            <div className="eyebrow reveal">Премиальный керамогранит</div>
+            <div className="eyebrow reveal">Премиальная клинкерная плитка</div>
             <h1 className="reveal" data-d="1"><span>JAPAN</span><span>CERAMIC</span></h1>
-            <p className="lead reveal" data-d="2">Премиальный керамогранит<br />для современной архитектуры</p>
+            <p className="lead reveal" data-d="2">Премиальная клинкерная плитка<br />для современной архитектуры</p>
             <p className="sub reveal" data-d="2">Коллекции, созданные для дизайнеров, архитекторов и современных пространств.</p>
             <div className="hero-actions reveal" data-d="3">
               <Link href="/catalog" className="btn btn-light">
