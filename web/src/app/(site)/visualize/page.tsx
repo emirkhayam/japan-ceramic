@@ -230,10 +230,10 @@ function VisualizePageInner() {
               onClick={handleContinue}
               className="btn-gold w-full !py-3 text-sm cursor-pointer"
             >
-              <Layers size={16} /> Продолжить — добавить ещё клинкер
+              <Layers size={16} /> Добавить ещё плитку
             </button>
             <p className="-mt-2 px-1 text-xs text-mist-400">
-              Возьмём этот результат за основу: выделите кистью другой участок и выберите второй материал.
+              Возьмём этот результат за основу: выделите прямоугольником или кистью другой участок и выберите другую плитку.
             </p>
 
             <div className="card p-5">
