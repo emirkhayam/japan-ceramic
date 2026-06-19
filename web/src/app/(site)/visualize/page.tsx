@@ -4,9 +4,11 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { PhotoUploader } from '@/components/PhotoUploader';
 import { MaskCanvas, type MaskCanvasHandle } from '@/components/MaskCanvas';
+import { PerspectiveCanvas, type PerspectiveCanvasHandle } from '@/components/PerspectiveCanvas';
 import { CatalogTileSelector, type CatalogTile } from '@/components/CatalogTileSelector';
 import { VisualizerLoader } from '@/components/VisualizerLoader';
-import { Sparkles, Download, MessageCircle, ArrowLeft, AlertCircle, RotateCcw, Camera, Check, Brush, Layers } from 'lucide-react';
+import { Sparkles, Download, MessageCircle, ArrowLeft, AlertCircle, RotateCcw, Camera, Check, Brush, Layers, Grid3x3 } from 'lucide-react';
+import { parseTileSize } from '@/lib/tile';
 import { cn } from '@/lib/cn';
 
 // Локальный (client-safe) аналог waHref — не импортируем из lib/settings,
@@ -16,14 +18,17 @@ function waLink(wa: string | null | undefined): string | null {
   return wa.startsWith("http") ? wa : `https://wa.me/${wa.replace(/[^\d]/g, "")}`;
 }
 
-type Mode = 'floor' | 'wall' | 'mask';
+type Mode = 'floor' | 'wall' | 'mask' | 'exact';
 type Stage = 'idle' | 'generating' | 'result' | 'error';
 
 const MODES: { id: Mode; label: string }[] = [
+  { id: 'exact', label: 'Точная укладка' },
   { id: 'mask', label: 'Выделить кистью' },
   { id: 'floor', label: 'Пол' },
   { id: 'wall', label: 'Стена' },
 ];
+
+const DEFAULT_TILE_MM = { w: 240, h: 71 }; // фолбэк, если у плитки не распарсились размеры
 
 function VisualizePageInner() {
   const params = useSearchParams();
@@ -31,9 +36,13 @@ function VisualizePageInner() {
 
   const [photo, setPhoto] = useState<string | null>(null);
   const [selectedTile, setSelectedTile] = useState<CatalogTile | null>(null);
-  const [mode, setMode] = useState<Mode>('mask');
+  const [mode, setMode] = useState<Mode>('exact');
   const [maskHasStrokes, setMaskHasStrokes] = useState(false);
   const maskRef = useRef<MaskCanvasHandle>(null);
+  const perspRef = useRef<PerspectiveCanvasHandle>(null);
+  // Реальные размеры выделенной плоскости (м) — для масштаба точной укладки.
+  const [planeWm, setPlaneWm] = useState(6);
+  const [planeHm, setPlaneHm] = useState(3);
   // Маска последней генерации — чтобы «Попробуйте другую» на экране результата
   // (где холст уже размонтирован) могла повторить запрос с той же областью.
   const lastMaskRef = useRef<string | null>(null);
@@ -66,6 +75,8 @@ function VisualizePageInner() {
   const maskReady = mode !== 'mask' || maskHasStrokes;
   const canGenerate = photo && selectedTile && maskReady && stage !== 'generating';
 
+  const tileMM = parseTileSize(selectedTile?.dimensions ?? null) ?? DEFAULT_TILE_MM;
+
   // Опрос статуса асинхронного рендера до готовности (или ошибки/таймаута).
   async function pollVisualization(requestId: string): Promise<string> {
     const deadline = Date.now() + 4 * 60 * 1000; // ждём максимум 4 минуты
@@ -88,6 +99,20 @@ function VisualizePageInner() {
   // окна/двери и накладывает плитку реалистично. Для режима кисти добавляем маску.
   async function generateFor(tile: CatalogTile) {
     if (!photo) return;
+
+    // Точная укладка — детерминированный рендер в браузере (реальная текстура, без ИИ).
+    if (mode === 'exact') {
+      const url = perspRef.current?.getResultDataUrl();
+      if (!url) {
+        setErrorMsg('Не удалось построить укладку — проверьте углы и размеры участка');
+        setStage('error');
+        return;
+      }
+      setResultUrl(url);
+      setResultMeta({ provider: 'exact', durationMs: 0 });
+      setStage('result');
+      return;
+    }
 
     let maskImage: string | undefined;
     if (mode === 'mask') {
@@ -171,7 +196,8 @@ function VisualizePageInner() {
   function handleContinue() {
     if (!resultUrl) return;
     setPhoto(resultUrl);
-    setMode('mask');
+    // В точном режиме остаёмся в нём (другой участок → другая плитка); иначе — кисть.
+    setMode((m) => (m === 'exact' ? 'exact' : 'mask'));
     setMaskHasStrokes(false);
     lastMaskRef.current = null;
     maskRef.current?.clear();
@@ -350,9 +376,71 @@ function VisualizePageInner() {
         <div className="space-y-6">
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
-              {photo && mode === 'mask' ? 'Выделите участок' : 'Фото комнаты'}
+              {!photo
+                ? 'Фото комнаты'
+                : mode === 'mask'
+                  ? 'Выделите участок'
+                  : mode === 'exact'
+                    ? 'Разметьте плоскость'
+                    : 'Фото комнаты'}
             </h2>
-            {photo && mode === 'mask' ? (
+            {!photo ? (
+              <PhotoUploader value={photo} onChange={setPhoto} />
+            ) : mode === 'exact' ? (
+              <div className="space-y-3">
+                {selectedTile?.imageUrl ? (
+                  <>
+                    <PerspectiveCanvas
+                      ref={perspRef}
+                      imageSrc={photo}
+                      tileUrl={selectedTile.imageUrl}
+                      tileWmm={tileMM.w}
+                      tileHmm={tileMM.h}
+                      planeWmeters={planeWm}
+                      planeHmeters={planeHm}
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-xs text-mist-400">
+                        Ширина участка, м
+                        <input
+                          type="number"
+                          min={0.5}
+                          step={0.1}
+                          value={planeWm}
+                          onChange={(e) => setPlaneWm(Math.max(0.2, Number(e.target.value) || 0))}
+                          className="mt-1 w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-sm text-mist-100"
+                        />
+                      </label>
+                      <label className="block text-xs text-mist-400">
+                        Высота участка, м
+                        <input
+                          type="number"
+                          min={0.5}
+                          step={0.1}
+                          value={planeHm}
+                          onChange={(e) => setPlaneHm(Math.max(0.2, Number(e.target.value) || 0))}
+                          className="mt-1 w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-sm text-mist-100"
+                        />
+                      </label>
+                    </div>
+                    <p className="text-xs text-mist-400">
+                      Перетащите 4 угла по краям стены и укажите реальные размеры участка — плитка
+                      ляжет точной текстурой 1:1 из каталога, в перспективе.
+                    </p>
+                  </>
+                ) : (
+                  <div className="rounded-2xl border border-white/10 bg-ink-900 p-6 text-center text-sm text-mist-400">
+                    Выберите плитку справа, чтобы разложить её по фасаду.
+                  </div>
+                )}
+                <button
+                  onClick={() => setPhoto(null)}
+                  className="text-xs text-mist-400 hover:text-gold-400 cursor-pointer"
+                >
+                  ← Сменить фото
+                </button>
+              </div>
+            ) : mode === 'mask' ? (
               <div className="space-y-3">
                 <MaskCanvas
                   ref={maskRef}
@@ -419,6 +507,7 @@ function VisualizePageInner() {
                     )}
                   >
                     {m.id === 'mask' && <Brush size={15} />}
+                    {m.id === 'exact' && <Grid3x3 size={15} />}
                     {m.label}
                   </button>
                 ))}
@@ -460,7 +549,7 @@ function VisualizePageInner() {
                 : 'Сгенерировать визуализацию'}
         </button>
         {photo && selectedTile && (
-          <p className="text-xs text-mist-400">~15–30 секунд</p>
+          <p className="text-xs text-mist-400">{mode === 'exact' ? 'мгновенно, текстура 1:1' : '~15–30 секунд'}</p>
         )}
       </div>
     </div>
