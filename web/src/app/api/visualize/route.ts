@@ -115,7 +115,7 @@ export async function POST(req: Request) {
           maskImageUrl: maskImage,
         }),
         surface === 'mask'
-          ? submitEvfSamJob({ imageUrl: roomImage, surface: 'wall' }).catch((e) => {
+          ? submitEvfSamJob({ imageUrl: roomImage }).catch((e) => {
               console.error('[visualize:evf-sam] submit failed (продолжим без исключения проёмов):', e);
               return null;
             })

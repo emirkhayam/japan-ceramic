@@ -720,47 +720,58 @@ export async function maskedRecompose(baseUrl: string, overlayUrl: string, maskU
   return `data:image/jpeg;base64,${composed.toString('base64')}`;
 }
 
-// Пересечение двух масок (логическое AND через перемножение яркостей): белое только там,
-// где обе белые. Используем, чтобы из выделения пользователя вычесть не-поверхность
-// (окна/двери), оставив белым лишь «внутри выделения И на стене». Размер берём по sizeRef.
-async function intersectMasks(maskAUrl: string, maskBUrl: string, sizeRefUrl: string): Promise<string> {
+// Вычитает зону проёмов из маски выделения: белое там, где выделено И это НЕ проём.
+// (выделение) × (НЕ проём): бел×бел=бел, бел×чёрн=чёрн. Размер берём по sizeRef.
+async function subtractOpenings(userMaskUrl: string, openingsMaskUrl: string, sizeRefUrl: string): Promise<string> {
   const sharp = (await import('sharp')).default;
-  const [aBuf, bBuf, refBuf] = await Promise.all([
-    fetchToBuffer(maskAUrl),
-    fetchToBuffer(maskBUrl),
+  const [uBuf, oBuf, refBuf] = await Promise.all([
+    fetchToBuffer(userMaskUrl),
+    fetchToBuffer(openingsMaskUrl),
     fetchToBuffer(sizeRefUrl),
   ]);
   const refMeta = await sharp(refBuf).metadata();
   const W = refMeta.width ?? 0;
   const H = refMeta.height ?? 0;
-  if (!W || !H) return maskAUrl;
+  if (!W || !H) return userMaskUrl;
 
-  const a = await sharp(aBuf).resize(W, H, { fit: 'fill' }).greyscale().toColourspace('b-w').toBuffer();
-  const b = await sharp(bBuf).resize(W, H, { fit: 'fill' }).greyscale().toColourspace('b-w').png().toBuffer();
-  const out = await sharp(a)
-    .composite([{ input: b, blend: 'multiply' }]) // бел×бел=бел, бел×чёрн=чёрн → AND
+  const user = await sharp(uBuf).resize(W, H, { fit: 'fill' }).greyscale().toColourspace('b-w').toBuffer();
+  // Проёмы инвертируем: белое = НЕ проём.
+  const notOpening = await sharp(oBuf).resize(W, H, { fit: 'fill' }).greyscale().negate().toColourspace('b-w').png().toBuffer();
+  const out = await sharp(user)
+    .composite([{ input: notOpening, blend: 'multiply' }])
     .png()
     .toBuffer();
   return `data:image/png;base64,${out.toString('base64')}`;
 }
 
-// Детерминированная обрезка результата AI по маске выделения (+ опц. исключение проёмов).
+// Доля белого в маске (0..1) — защита от сегментации, «съевшей» почти всё выделение.
+async function whiteFraction(maskUrl: string): Promise<number> {
+  const sharp = (await import('sharp')).default;
+  const buf = await fetchToBuffer(maskUrl);
+  const stats = await sharp(buf).greyscale().stats();
+  return (stats.channels[0]?.mean ?? 0) / 255;
+}
+
+// Детерминированная обрезка результата AI по маске выделения (+ исключение проёмов).
 // Нужна потому, что gpt-image-1 не имеет нативной маски и перекладывает весь фасад —
 // здесь мы оставляем плитку только в выбранной зоне, а вне её пиксели = оригинал.
 export async function compositeMaskedResult(input: {
   roomImageUrl: string;
   resultUrl: string;
   maskUrl: string;
-  /** requestId заранее запущенной (параллельно с рендером) EVF-SAM-сегментации поверхности.
+  /** requestId заранее запущенной (параллельно с рендером) EVF-SAM-сегментации проёмов.
    *  Если задан и маска успеет — окна/двери вычитаются из зоны; иначе обрезаем только по выделению. */
   segRequestId?: string | null;
 }): Promise<string> {
   let effectiveMask = input.maskUrl;
   if (input.segRequestId) {
-    const surfaceMask = await fetchEvfSamMask(input.segRequestId);
-    // null (не успела / ошибка) → мягкий откат: обрезаем только по выделению.
-    if (surfaceMask) {
-      effectiveMask = await intersectMasks(input.maskUrl, surfaceMask, input.roomImageUrl);
+    const openingsMask = await fetchEvfSamMask(input.segRequestId);
+    if (openingsMask) {
+      const candidate = await subtractOpenings(input.maskUrl, openingsMask, input.roomImageUrl);
+      // Защита: если после вычитания осталось <15% от выделения — сегментация ненадёжна
+      // (приняла стену за проём), откатываемся к ПОЛНОМУ выделению, чтобы не показать оригинал.
+      const [cf, uf] = await Promise.all([whiteFraction(candidate), whiteFraction(input.maskUrl)]);
+      if (uf > 0 && cf >= 0.15 * uf) effectiveMask = candidate;
     }
   }
   return maskedRecompose(input.roomImageUrl, input.resultUrl, effectiveMask);
@@ -972,24 +983,23 @@ export async function segmentSurfaceMask(input: {
 }
 
 const EVF_SAM_ENDPOINT = 'fal-ai/evf-sam';
-const EVF_SAM_NEGATIVE =
-  'door, gate, garage door, window, glass, balcony, lamp, light fixture, sconce, sign, pipe, downspout, plant, bush, tree, sky, roof, person, car';
 type EvfSamResult = { image?: { url?: string }; data?: { image?: { url?: string } } };
 
-// Асинхронно ставим EVF-SAM-сегментацию в очередь fal — чтобы запустить ПАРАЛЛЕЛЬНО с
-// рендером gpt-image-1 (холодный старт EVF-SAM ~78с перекрывается рендером, а не висит
-// отдельным синхронным запросом → не упирается в таймаут прокси).
-export async function submitEvfSamJob(input: {
-  imageUrl: string;
-  surface: 'floor' | 'wall';
-}): Promise<{ requestId: string }> {
+// Сегментируем ПРОЁМЫ (окна/двери/витрины), а НЕ «стену»: их потом вычитаем из выделения.
+// Позитивный промпт безопаснее — если проёмов нет или они не нашлись, выделение остаётся
+// целым и плитка ложится на весь выбранный участок (а не «ничего не наложилось»).
+const EVF_OPENINGS_PROMPT =
+  'window, glass, door, glass door, gate, garage door, balcony door, shop window, storefront, wall lamp, light fixture';
+
+// Ставим EVF-SAM-сегментацию проёмов в очередь fal — ПАРАЛЛЕЛЬНО с рендером gpt-image-1
+// (холодный старт ~78с перекрывается рендером, а не висит отдельным синхронным запросом).
+export async function submitEvfSamJob(input: { imageUrl: string }): Promise<{ requestId: string }> {
   const key = process.env.FAL_KEY;
   if (!key) throw new Error('FAL_KEY не задан');
   fal.config({ credentials: key });
 
-  const prompt = input.surface === 'floor' ? 'floor, ground, paving' : 'wall, building facade wall surface';
   const submitted = (await fal.queue.submit(EVF_SAM_ENDPOINT, {
-    input: { image_url: input.imageUrl, prompt, negative_prompt: EVF_SAM_NEGATIVE, mask_only: true, fill_holes: true },
+    input: { image_url: input.imageUrl, prompt: EVF_OPENINGS_PROMPT, mask_only: true, fill_holes: true },
   })) as { request_id: string };
   return { requestId: submitted.request_id };
 }
