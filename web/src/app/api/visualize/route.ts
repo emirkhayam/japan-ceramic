@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getTileById } from '@/lib/tiles';
-import { visualize, submitGptImageJob, submitEvfSamJob, type Provider } from '@/lib/ai';
+import { visualize, submitGptImageJob, submitEvfSamJob, RENDER_PROVIDER_LABEL, type Provider } from '@/lib/ai';
 import { lookupCache } from '@/lib/demo-cache';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -129,13 +129,13 @@ export async function POST(req: Request) {
       // Лог пишем при постановке задачи — здесь весь контекст (юзер/плитка/поверхность);
       // токены у gpt-image-1 не отдаются (usageMetadata только у Gemini), поэтому нули.
       await logVisualization({
-        userId: user.id, tileSlug: tileKey, tileName, surface, provider: 'gpt-image-1',
+        userId: user.id, tileSlug: tileKey, tileName, surface, provider: RENDER_PROVIDER_LABEL,
       });
       return NextResponse.json({
         async: true,
         requestId: gpt.requestId,
         segRequestId: seg?.requestId ?? null,
-        provider: 'gpt-image-1',
+        provider: RENDER_PROVIDER_LABEL,
         tile: { id: tileKey, name: tileName },
       });
     } catch (err) {

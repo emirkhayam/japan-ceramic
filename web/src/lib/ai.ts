@@ -805,10 +805,16 @@ async function fetchToBuffer(url: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
-// ---------- Прямое редактирование фасада через gpt-image-1 (fal) ----------
-// Та самая модель, что в ChatGPT: понимает сцену, перспективу, окна/двери и накладывает
-// плитку реалистично одним вызовом. На вход — фото дома + образец плитки + промпт.
-const GPT_IMAGE_ENDPOINT = 'fal-ai/gpt-image-1/edit-image';
+// ---------- Прямое редактирование фасада через fal (multi-image edit) ----------
+// На вход — фото объекта + образец плитки (+ маска) + промпт; модель меняет только
+// поверхность, сохраняя окна/двери/кадр. Модель вынесена в env RENDER_MODEL —
+// по умолчанию Nano Banana 2 (Gemini-image edit): лучший «честный эдит» + цвет, и в
+// ~6 раз дешевле gpt-image-1 (по бенчмарку моделей fal на нашем кейсе).
+// Бенч: nano-banana-2 ≈ $0.08 vs gpt-image-1 ≈ $0.46.
+const RENDER_MODEL = process.env.RENDER_MODEL || 'fal-ai/nano-banana-2/edit';
+// Метка провайдера для логов/ответа (короткое имя из slug).
+export const RENDER_PROVIDER_LABEL = RENDER_MODEL.split('/').slice(1).join('-') || RENDER_MODEL;
+const GPT_IMAGE_ENDPOINT = RENDER_MODEL;
 
 export type GptImageInput = {
   roomImageUrl: string;
@@ -873,10 +879,25 @@ async function buildGptImageInput(input: GptImageInput) {
     ? ' IMAGE 3 is a binary mask of IMAGE 1: change ONLY the white region, keep the black region pixel-identical.'
     : '';
 
-  const prompt = `IMAGE 1 is a real photograph of a building. IMAGE 2 is a single ceramic tile sample (could be clinker brick, large-format porcelain/gres or stone) called "${input.tileName}".${maskNote}
+  // Material-lock по названию товара — главная защита от «дерева вместо клинкера»:
+  // жёстко фиксируем тип материала и требование точного цвета IMAGE 2.
+  const nm = input.tileName.toLowerCase();
+  let materialLock = '';
+  if (nm.includes('клинкер') || nm.includes('clinker')) {
+    materialLock =
+      ' This is a fired-clay CLINKER BRICK: the result MUST be real brick masonry — many small bricks laid in regular courses with grout joints. It must NEVER look like wood, planks, siding, panels or large slabs. Reproduce the EXACT colour and hue of IMAGE 2.';
+  } else if (nm.includes('керамогранит') || nm.includes('porcelain') || nm.includes('gres')) {
+    materialLock =
+      ' This is LARGE-FORMAT PORCELAIN/GRES tile: use big rectangular tiles with thin grout lines — NOT small bricks and NOT wood. Reproduce the EXACT colour and pattern of IMAGE 2.';
+  } else if (nm.includes('мозаик') || nm.includes('mosaic')) {
+    materialLock =
+      ' This is MOSAIC: use small mosaic tesserae in a fine regular grid. Reproduce the EXACT colour and pattern of IMAGE 2.';
+  }
+
+  const prompt = `IMAGE 1 is a real photograph of a building. IMAGE 2 is a single ceramic tile sample called "${input.tileName}".${materialLock}${maskNote}
 Re-clad ${surfaceWord} in IMAGE 1 with the tile from IMAGE 2, laid as a regular tiled surface:
 - Follow the TRUE perspective and angles of every wall surface, wrapping correctly around building corners, with correct tile coursing and aligned grout lines.${sizeHint}
-- Reproduce the exact colour, texture, finish and pattern of IMAGE 2 — do not invent a different tile and do not default to a generic brick.
+- Reproduce the EXACT colour, hue, texture, finish and pattern of IMAGE 2 — do not invent a different tile, do not shift the colour, do not default to a generic brick or to wood.
 - Do NOT cover or change windows, doors, frames, window sills, lamps, decorative trim, balconies, the roof, ground, sky, plants — keep all of them pixel-identical and tile cleanly AROUND them.
 - Match the original photo's lighting, shadows and reflections so it looks like the house was really finished with this tile.
 Output a single photorealistic edited photograph, nothing else.`;
@@ -885,19 +906,22 @@ Output a single photorealistic edited photograph, nothing else.`;
     ? [input.roomImageUrl, input.tileImageUrl, input.maskImageUrl as string]
     : [input.roomImageUrl, input.tileImageUrl];
 
-  // gpt-image-1 отдаёт только 1024x1024 / 1536x1024 / 1024x1536. 'auto' часто берёт
-  // квадрат и обрезает (зум). Подбираем формат под пропорцию исходного фото, чтобы
-  // сохранить кадрирование.
-  const image_size = await pickGptImageSize(input.roomImageUrl);
-
-  return {
-    prompt,
-    image_urls,
-    input_fidelity: 'high' as const,
-    quality: input.quality ?? ('high' as const),
-    image_size,
-    output_format: 'jpeg' as const,
-  };
+  // Параметры зависят от модели. gpt-image-1 принимает input_fidelity/quality/image_size;
+  // nano-banana / seedream / flux-2 edit — только prompt + image_urls (лишние поля могут
+  // ломать валидацию). По умолчанию модель — nano-banana-2 (минимальный вход).
+  if (GPT_IMAGE_ENDPOINT.includes('gpt-image-1')) {
+    // gpt-image-1 отдаёт только 1024x1024 / 1536x1024 / 1024x1536; подбираем под пропорцию.
+    const image_size = await pickGptImageSize(input.roomImageUrl);
+    return {
+      prompt,
+      image_urls,
+      input_fidelity: 'high' as const,
+      quality: input.quality ?? ('high' as const),
+      image_size,
+      output_format: 'jpeg' as const,
+    };
+  }
+  return { prompt, image_urls };
 }
 
 type GptImageResult = { images?: { url?: string }[]; data?: { images?: { url?: string }[] } };
