@@ -746,8 +746,10 @@ const landingStyles = `
     .hero{padding-bottom:40px}
     .hero-actions .btn{flex:1;justify-content:center}
     .sec-top{flex-direction:column;align-items:flex-start}
-    .cat3d-stage{overflow-x:auto;scrollbar-width:none;perspective:none;justify-content:flex-start;margin-top:42px;padding:14px 22px 8px;gap:16px;scroll-snap-type:x mandatory;scroll-padding:0 22px}
+    .cat3d-stage{overflow-x:auto;overflow-y:hidden;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;perspective:none;justify-content:flex-start;align-items:stretch;margin-top:42px;padding:14px 22px 8px;gap:16px;scroll-snap-type:x mandatory;scroll-padding:0 22px}
     .cat3d-stage::-webkit-scrollbar{display:none}
+    /* декоративные свечения растягивают ширину прокрутки — на мобиле убираем */
+    .cat3d-stage::before,.cat3d-stage::after{display:none}
     .cat3d{flex:0 0 80%;aspect-ratio:7/10;scroll-snap-align:center}
     .cat3d[data-i="0"] .cat3d-box,.cat3d[data-i="1"] .cat3d-box,.cat3d[data-i="2"] .cat3d-box{transform:none}
     .cat3d-edge,.cat3d-floor{display:none}

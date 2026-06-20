@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/cn';
-import { Upload, Camera, Check } from 'lucide-react';
+import { Upload, Camera, Check, Image as ImageIcon } from 'lucide-react';
 
 type DemoRoom = {
   id: string;
@@ -23,6 +23,7 @@ type Props = {
 
 export function PhotoUploader({ value, onChange }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
   const handleFile = useCallback(
@@ -91,8 +92,17 @@ export function PhotoUploader({ value, onChange }: Props) {
         )}
         onClick={() => fileInputRef.current?.click()}
       >
+        {/* Основной выбор — без capture: на телефоне открывает галерею/файлы (не камеру) */}
         <input
           ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+        />
+        {/* Отдельный инпут для съёмки с камеры */}
+        <input
+          ref={cameraInputRef}
           type="file"
           accept="image/*"
           capture="environment"
@@ -103,15 +113,32 @@ export function PhotoUploader({ value, onChange }: Props) {
           <Upload size={26} />
         </div>
         <p className="mt-4 text-lg font-semibold">Перетащите фото сюда</p>
-        <p className="mt-1 text-sm text-mist-400">или нажмите для выбора файла</p>
+        <p className="mt-1 text-sm text-mist-400">или выберите из галереи / файлов</p>
         <p className="mt-4 text-xs text-mist-400">JPG / PNG · до 10 MB</p>
 
-        <button
-          type="button"
-          className="absolute bottom-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-ink-900/60 px-4 py-2 text-sm font-medium text-mist-100 backdrop-blur sm:hidden"
-        >
-          <Camera size={16} /> Снять с камеры
-        </button>
+        {/* Мобильные кнопки: явный выбор из галереи и съёмка с камеры */}
+        <div className="absolute inset-x-4 bottom-4 flex gap-2 sm:hidden">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              fileInputRef.current?.click();
+            }}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-gold-500 px-4 py-2.5 text-sm font-semibold text-ink-900 whitespace-nowrap"
+          >
+            <ImageIcon size={16} /> Галерея
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              cameraInputRef.current?.click();
+            }}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-white/15 bg-ink-900/60 px-4 py-2.5 text-sm font-medium text-mist-100 backdrop-blur whitespace-nowrap"
+          >
+            <Camera size={16} /> Камера
+          </button>
+        </div>
       </div>
 
     </div>

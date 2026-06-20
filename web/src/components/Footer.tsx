@@ -102,8 +102,22 @@ const footerStyles = `
     .ft-top{grid-template-columns:1fr 1fr;gap:40px}
   }
   @media(max-width:760px){
+    .site-footer{padding-top:56px}
     .ft-wrap{padding:0 22px}
-    .ft-top{grid-template-columns:1fr}
+    /* Ссылочные колонки — в ряд (3 столбца), новостной блок и бренд — во всю ширину */
+    .ft-top{grid-template-columns:repeat(3,1fr);gap:30px 14px;padding-bottom:40px}
+    .ft-news{grid-column:1/-1}
+    .ft-brand{grid-column:1/-1}
+    .ft-news h3{font-size:21px;margin-bottom:10px}
+    .ft-news p{margin-bottom:16px}
+    .ft-col h4{margin-bottom:14px;font-size:11px;letter-spacing:.16em}
+    .ft-col a{font-size:13px;padding:5px 0}
+    .ft-brand .ft-logo{margin-bottom:18px}
+    .ft-socials{margin-bottom:16px}
     .ft-bot{flex-direction:column;align-items:flex-start}
+  }
+  @media(max-width:420px){
+    /* На совсем узких — два столбца, чтобы названия не ломались в кашу */
+    .ft-top{grid-template-columns:1fr 1fr;gap:26px 16px}
   }
 `;
