@@ -16,6 +16,94 @@ export const metadata: Metadata = {
     "Зарегистрируйтесь и получите доступ к библиотеке Japan Ceramic: студийные фото, бесшовные 3D-текстуры, спецификации и AI-визуализация материала на фото вашего объекта.",
 };
 
+// Презентабельная «рамка» для фото плитки из каталога: мягкое скругление,
+// золотое кольцо и подпись при наведении, лёгкий зум картинки. Используется
+// в hero-коллаже и в блоке AI-визуализации.
+function TileFrame({
+  slug,
+  name,
+  url,
+  className = "",
+}: {
+  slug: string;
+  name: string;
+  url: string;
+  className?: string;
+}) {
+  return (
+    <Link
+      href={`/catalog/${slug}`}
+      className={`group relative block overflow-hidden rounded-2xl bg-ink-800 ring-1 ring-white/10 transition duration-500 hover:ring-gold-500/50 hover:shadow-[0_24px_60px_-24px_rgba(198,154,78,.4)] ${className}`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={name}
+        loading="lazy"
+        className="h-full w-full object-cover transition duration-700 ease-[cubic-bezier(.22,.61,.36,1)] group-hover:scale-[1.07]"
+      />
+      {/* затемнение снизу — чтобы подпись читалась */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink-900/75 via-ink-900/5 to-transparent opacity-70 transition duration-500 group-hover:opacity-90" />
+      {/* подпись выезжает при наведении */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-2 p-3.5 opacity-0 transition duration-500 group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="line-clamp-1 text-sm font-medium text-mist-100">{name}</div>
+        <div className="mt-1 flex items-center gap-1 text-[10px] uppercase tracking-[.18em] text-gold-400">
+          В каталог <ArrowRight size={11} />
+        </div>
+      </div>
+      {/* внутренняя тонкая обводка для глубины */}
+      <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/[.06]" />
+    </Link>
+  );
+}
+
+// «Студийный» рендер плитки в стиле каталожной съёмки: тёмный градиентный софтбокс,
+// плитка целиком по центру (object-contain) с лёгким наклоном-перспективой, мягкой
+// тенью и подписью снизу. Используется ТОЛЬКО в hero-секции «Весь наш ассортимент».
+function StudioTile({
+  slug,
+  name,
+  url,
+  className = "",
+}: {
+  slug: string;
+  name: string;
+  url: string;
+  className?: string;
+}) {
+  return (
+    <Link
+      href={`/catalog/${slug}`}
+      className={`group relative block overflow-hidden rounded-2xl ring-1 ring-white/10 transition duration-500 hover:ring-gold-500/40 hover:shadow-[0_28px_70px_-30px_rgba(198,154,78,.45)] ${className}`}
+      style={{ background: "radial-gradient(125% 95% at 50% 32%, #1b212c 0%, #0d111a 55%, #06080d 100%)" }}
+    >
+      {/* верхний «софтбокс» — мягкий свет сверху, как в студийной съёмке */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-2/3 opacity-70"
+        style={{ background: "radial-gradient(75% 100% at 50% 0%, rgba(255,255,255,.12), transparent 70%)" }}
+      />
+      {/* плитка по центру: целиком, с тенью и лёгким наклоном; выпрямляется при ховере */}
+      <div className="absolute inset-0 flex items-center justify-center p-6 sm:p-7">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={name}
+          loading="lazy"
+          className="max-h-full w-auto max-w-[90%] object-contain drop-shadow-[0_26px_34px_rgba(0,0,0,.6)] transition duration-700 ease-[cubic-bezier(.22,.61,.36,1)] [transform:perspective(1000px)_rotateX(5deg)] group-hover:[transform:perspective(1000px)_rotateX(0deg)_scale(1.05)]"
+        />
+      </div>
+      {/* подпись в духе референса */}
+      <div className="absolute inset-x-0 bottom-0 p-4">
+        <div className="line-clamp-1 text-sm font-medium text-mist-100">{name}</div>
+        <div className="mt-1 text-[10px] uppercase tracking-[.2em] text-gold-400/90">
+          Фактура крупным планом
+        </div>
+      </div>
+      <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/[.05]" />
+    </Link>
+  );
+}
+
 // Лендинг под рекламу для дизайнеров/архитекторов. Намеренно НЕ в основном меню
 // (PUBLIC_NAV) — отдельная посадочная страница для рекламных кампаний.
 // Главный смысл (как на референсе Tilda): регистрация дизайнера → доступ к библиотеке.
@@ -83,7 +171,28 @@ export default async function DesignersPage() {
   ];
 
   return (
-    <div className="overflow-hidden">
+    <div className="relative overflow-hidden">
+      {/* ======================= ПРЕМИАЛЬНЫЙ ФОН ======================= */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        {/* тёплое золотое свечение сверху */}
+        <div
+          className="absolute left-1/2 top-[-14rem] h-[44rem] w-[64rem] -translate-x-1/2 rounded-full blur-3xl"
+          style={{ background: "radial-gradient(ellipse at center, rgba(198,154,78,.13), transparent 70%)" }}
+        />
+        {/* холодный акцент справа — для глубины */}
+        <div
+          className="absolute right-[-16rem] top-[36%] h-[36rem] w-[36rem] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, rgba(120,150,200,.10), transparent 70%)" }}
+        />
+        {/* мягкое золото слева внизу */}
+        <div
+          className="absolute bottom-[-12rem] left-[-12rem] h-[34rem] w-[34rem] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, rgba(198,154,78,.07), transparent 70%)" }}
+        />
+        {/* тонкая сетка, гаснущая к краям */}
+        <div className="bg-grid-faint absolute inset-0" />
+      </div>
+
       {/* ======================= HERO ======================= */}
       <section className="relative mx-auto max-w-7xl px-4 pt-12 pb-16 sm:px-8 sm:pt-16 sm:pb-24">
         <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_1fr]">
@@ -95,7 +204,8 @@ export default async function DesignersPage() {
             <p className="mt-5 max-w-xl text-lg text-mist-300">
               Зарегистрируйтесь и получите доступ к библиотеке Japan Ceramic:
               студийные фото, бесшовные 3D-текстуры, спецификации по каждой позиции
-              и AI-визуализация материала прямо на фото вашего объекта.
+              и AI-визуализация — любую плитку из каталога можно сразу примерить
+              на фото вашего объекта.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="#register" className="btn-gold !px-7 !py-4 text-base">
@@ -110,23 +220,16 @@ export default async function DesignersPage() {
             </p>
           </div>
 
-          {/* Коллаж из реальных фото каталога */}
-          <div className="grid grid-cols-3 gap-3">
-            {heroTiles.slice(0, 6).map((p, i) => (
-              <Link
+          {/* Студийные рендеры плитки (в стиле каталожной съёмки) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            {heroTiles.slice(0, 4).map((p) => (
+              <StudioTile
                 key={p.slug}
-                href={`/catalog/${p.slug}`}
-                className={`group relative overflow-hidden rounded-xl border border-white/10 bg-ink-800 ${
-                  i === 0 ? "col-span-2 row-span-2 aspect-square" : "aspect-square"
-                }`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={p.images[0]!.imageUrl}
-                  alt={p.name}
-                  className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                />
-              </Link>
+                slug={p.slug}
+                name={p.name}
+                url={p.images[0]!.imageUrl}
+                className="aspect-[4/3]"
+              />
             ))}
           </div>
         </div>
@@ -191,10 +294,11 @@ export default async function DesignersPage() {
               <p className="mt-4 text-mist-300">
                 Загрузите фото интерьера или фасада, выделите кистью нужный участок —
                 и наш ИИ подставит выбранный материал фотореалистично, с сохранением
-                перспективы и света.
+                перспективы и света. Ничего скачивать или готовить не нужно.
               </p>
               <ul className="mt-6 space-y-3 text-sm text-mist-300">
                 {[
+                  "Доступны все плитки каталога — выбирайте любую позицию прямо в визуализаторе",
                   "Выделение участка кистью — меняйте только нужную стену или пол",
                   "Комбинируйте несколько клинкеров на одном фасаде",
                   "Результат за 15–30 секунд, можно скачать и показать клиенту",
@@ -210,12 +314,15 @@ export default async function DesignersPage() {
               </Link>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               {heroTiles.slice(2, 6).map((p) => (
-                <div key={p.slug} className="overflow-hidden rounded-xl border border-white/10 bg-ink-800 aspect-[4/5]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.images[0]!.imageUrl} alt={p.name} className="h-full w-full object-cover" />
-                </div>
+                <TileFrame
+                  key={p.slug}
+                  slug={p.slug}
+                  name={p.name}
+                  url={p.images[0]!.imageUrl}
+                  className="aspect-[4/5]"
+                />
               ))}
             </div>
           </div>

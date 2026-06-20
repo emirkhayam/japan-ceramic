@@ -158,6 +158,40 @@ h1, h2 {
   }
 }
 
+/* ===== Шапка: крупнее по умолчанию, плавно сжимается при скролле ===== */
+.site-header-inner {
+  padding-top: 1.75rem;
+  padding-bottom: 1.75rem;
+  transition: padding .45s var(--ease);
+}
+.site-header[data-scrolled="true"] .site-header-inner {
+  padding-top: .85rem;
+  padding-bottom: .85rem;
+}
+/* Пункты меню: крупнее обычного, при скролле уменьшаются вместе с шапкой */
+.nav-link {
+  font-size: 15.5px;
+  letter-spacing: .005em;
+  transition: font-size .45s var(--ease), color .3s var(--ease);
+}
+.site-header[data-scrolled="true"] .nav-link {
+  font-size: 13px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-header-inner,
+  .nav-link { transition: none; }
+}
+
+/* ===== Премиальный фон лендинга: тонкая сетка, мягко гаснущая к краям ===== */
+.bg-grid-faint {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, .03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .03) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 35%, transparent 78%);
+  mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 35%, transparent 78%);
+}
+
 /* ===== Анимации загрузки изображений в админке ===== */
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(-8px); }

@@ -15,11 +15,11 @@ export default async function Header({ transparent }: { transparent?: boolean })
         <BrandLogo height={30} wordSize={13} stacked />
       </Link>
 
-      <nav className="hidden md:flex gap-[38px]">
+      <nav className="hidden md:flex gap-[34px]">
         {PUBLIC_NAV.map((item) => (
-          <Link key={item.label} href={item.href} className="text-[13px] font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
+          <Link key={item.label} href={item.href} className="nav-link font-normal text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors relative group py-1.5">
             {item.label}
-            <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--ink)] transition-all duration-400 group-hover:w-full" />
+            <span className="absolute left-0 bottom-0 w-0 h-px bg-[var(--color-gold-400)] transition-all duration-400 group-hover:w-full" />
           </Link>
         ))}
       </nav>
