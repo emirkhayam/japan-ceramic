@@ -36,6 +36,9 @@ function VisualizePageInner() {
   const initialSlug = params.get('tile');
 
   const [photo, setPhoto] = useState<string | null>(null);
+  // Исходное загруженное фото (до «Добавить ещё плитку», которое наслаивает результат).
+  // Нужно, чтобы смена плитки рендерилась от оригинала, а не от наслоённой картинки.
+  const originalPhotoRef = useRef<string | null>(null);
   const [selectedTile, setSelectedTile] = useState<CatalogTile | null>(null);
   const [mode, setMode] = useState<Mode>('mask');
   // Реальные размеры поверхности (опционально) — чтобы ИИ положил плитку в верном масштабе.
@@ -113,8 +116,11 @@ function VisualizePageInner() {
 
   // Генерация через gpt-image-1 (сервер): модель сама распознаёт сцену, перспективу,
   // окна/двери и накладывает плитку реалистично. Для режима кисти добавляем маску.
-  async function generateFor(tile: CatalogTile) {
-    if (!photo) return;
+  // roomOverride — рендерить от конкретного фото (для «смены плитки» это ОРИГИНАЛ,
+  // а не наслоённый результат). Без него берём текущее photo.
+  async function generateFor(tile: CatalogTile, roomOverride?: string) {
+    const roomImage = roomOverride ?? photo;
+    if (!roomImage) return;
 
     let maskImage: string | undefined;
     if (mode === 'mask') {
@@ -134,7 +140,7 @@ function VisualizePageInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          roomImage: photo,
+          roomImage,
           tileId: tile.slug,
           surface: mode,
           maskImage,
@@ -162,7 +168,7 @@ function VisualizePageInner() {
           const cmp = await fetch('/api/visualize/composite', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ resultUrl: imageUrl, roomImage: photo, maskImage, segRequestId: data.segRequestId ?? null }),
+            body: JSON.stringify({ resultUrl: imageUrl, roomImage, maskImage, segRequestId: data.segRequestId ?? null }),
           });
           if (!cmp.ok) {
             const d = await cmp.json().catch(() => ({}));
@@ -211,9 +217,19 @@ function VisualizePageInner() {
     setStage('idle');
   }
 
+  // Смена плитки на экране результата: рендерим ОТ ИСХОДНОГО фото (а не от наслоённого
+  // результата) — чтобы выбранная плитка легла на весь фасад, а не «осталась прошлая».
   async function handleSwapTile(tile: CatalogTile) {
+    const orig = originalPhotoRef.current ?? photo;
     setSelectedTile(tile);
-    generateFor(tile);
+    if (orig) setPhoto(orig);
+    generateFor(tile, orig ?? undefined);
+  }
+
+  // Загрузка фото: запоминаем оригинал для «смены плитки».
+  function handlePhotoUpload(dataUrl: string | null) {
+    setPhoto(dataUrl);
+    if (dataUrl) originalPhotoRef.current = dataUrl;
   }
 
   if (stage === 'generating') {
@@ -409,7 +425,7 @@ function VisualizePageInner() {
                 </button>
               </div>
             ) : (
-              <PhotoUploader value={photo} onChange={setPhoto} />
+              <PhotoUploader value={photo} onChange={handlePhotoUpload} />
             )}
           </section>
 
