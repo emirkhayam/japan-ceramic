@@ -800,9 +800,30 @@ async function fetchToBuffer(url: string): Promise<Buffer> {
     if (!m) throw new Error('Невалидный data URL');
     return Buffer.from(m[1], 'base64');
   }
-  const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  // Ретраи с backoff: связь с fal/supabase иногда даёт транзиентный connect-timeout
+  // (UND_ERR_CONNECT_TIMEOUT) → без ретраев это роняло весь composite («fetch failed»).
+  // HTTP 4xx не ретраим (это не транзиентная ошибка) — пробрасываем сразу.
+  const backoff = [400, 900, 1800];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= backoff.length; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) {
+        if (res.status >= 400 && res.status < 500) throw new Error(`HTTP ${res.status}`);
+        throw new Error(`HTTP ${res.status}`); // 5xx → ретраим ниже
+      }
+      return Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/HTTP 4\d\d/.test(msg)) throw err; // клиентская ошибка — не ретраим
+      if (attempt < backoff.length) {
+        await new Promise((r) => setTimeout(r, backoff[attempt]));
+        continue;
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 // ---------- Прямое редактирование фасада через fal (multi-image edit) ----------
@@ -1041,7 +1062,16 @@ export async function pollGptImageJob(requestId: string): Promise<GptImageJobSta
     const result = (await fal.queue.result(GPT_IMAGE_ENDPOINT, { requestId })) as GptImageResult;
     const url = result?.data?.images?.[0]?.url ?? result?.images?.[0]?.url;
     if (!url) return { status: 'failed', error: 'gpt-image-1: ответ без URL картинки' };
-    return { status: 'completed', imageUrl: url };
+    // Забираем результат сразу в data URL (с ретраями) — чтобы следующий шаг (composite)
+    // не пере-фетчил картинку по сети: на флаки-связи с fal это роняло «fetch failed».
+    // Не получилось скачать — отдаём URL как есть (хуже не будет).
+    try {
+      const buf = await fetchToBuffer(url);
+      const mime = buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png' : 'image/jpeg';
+      return { status: 'completed', imageUrl: `data:${mime};base64,${buf.toString('base64')}` };
+    } catch {
+      return { status: 'completed', imageUrl: url };
+    }
   } catch (err) {
     return { status: 'failed', error: err instanceof Error ? err.message : 'gpt-image-1: ошибка рендера' };
   }

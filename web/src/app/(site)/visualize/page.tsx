@@ -22,6 +22,15 @@ function parsePositive(s: string): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+// Технические ошибки сети → понятный текст с намёком повторить.
+function friendlyError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/fetch failed|timeout|ETIMEDOUT|ECONN|network|502|503|504|UND_ERR/i.test(raw)) {
+    return 'Сеть подвисла при обработке. Нажмите «Попробовать снова» — обычно со второго раза проходит.';
+  }
+  return raw || 'Неизвестная ошибка';
+}
+
 type Mode = 'floor' | 'wall' | 'mask';
 type Stage = 'idle' | 'generating' | 'result' | 'error';
 
@@ -45,6 +54,8 @@ function VisualizePageInner() {
   const [widthM, setWidthM] = useState('');
   const [heightM, setHeightM] = useState('');
   const [areaM2, setAreaM2] = useState('');
+  // Сколько плиток уже наложено на разные участки (для пошаговой облицовки).
+  const [layerCount, setLayerCount] = useState(1);
   const [maskHasStrokes, setMaskHasStrokes] = useState(false);
   const maskRef = useRef<MaskCanvasHandle>(null);
   // Маска последней генерации — чтобы «Попробуйте другую» на экране результата
@@ -187,7 +198,7 @@ function VisualizePageInner() {
       }
     } catch (err) {
       console.error(err);
-      setErrorMsg(err instanceof Error ? err.message : 'Неизвестная ошибка');
+      setErrorMsg(friendlyError(err));
       setStage('error');
     }
   }
@@ -208,6 +219,7 @@ function VisualizePageInner() {
   function handleContinue() {
     if (!resultUrl) return;
     setPhoto(resultUrl);
+    setLayerCount((n) => n + 1); // новый участок поверх текущего результата
     setMode('mask');
     setMaskHasStrokes(false);
     lastMaskRef.current = null;
@@ -223,13 +235,15 @@ function VisualizePageInner() {
     const orig = originalPhotoRef.current ?? photo;
     setSelectedTile(tile);
     if (orig) setPhoto(orig);
+    setLayerCount(1); // свап = заново на весь фасад, слои сбрасываются
     generateFor(tile, orig ?? undefined);
   }
 
-  // Загрузка фото: запоминаем оригинал для «смены плитки».
+  // Загрузка фото: запоминаем оригинал для «смены плитки», сбрасываем слои.
   function handlePhotoUpload(dataUrl: string | null) {
     setPhoto(dataUrl);
     if (dataUrl) originalPhotoRef.current = dataUrl;
+    setLayerCount(1);
   }
 
   if (stage === 'generating') {
@@ -273,14 +287,19 @@ function VisualizePageInner() {
           </div>
 
           <aside className="space-y-4">
+            {layerCount > 1 && (
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-gold-500/40 bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-400">
+                <Layers size={12} /> Наложено плиток: {layerCount}
+              </div>
+            )}
             <button
               onClick={handleContinue}
               className="btn-gold w-full !py-3 text-sm cursor-pointer"
             >
-              <Layers size={16} /> Добавить ещё плитку
+              <Layers size={16} /> Добавить плитку на другой участок
             </button>
             <p className="-mt-2 px-1 text-xs text-mist-400">
-              Возьмём этот результат за основу: выделите прямоугольником или кистью другой участок и выберите другую плитку.
+              Возьмём этот результат за основу: выделите кистью или прямоугольником <b>другой</b> участок дома и выберите <b>другую</b> плитку — наложим поверх, не трогая уже облицованное.
             </p>
 
             <div className="card p-5">
@@ -388,8 +407,16 @@ function VisualizePageInner() {
           <div className="flex-1">
             <div className="font-semibold text-red-400">Что-то пошло не так</div>
             <div className="mt-1 text-mist-400">{errorMsg}</div>
+            {selectedTile && photo && (
+              <button
+                onClick={() => { setErrorMsg(null); handleGenerate(); }}
+                className="btn-gold mt-3 !px-4 !py-2 text-xs cursor-pointer"
+              >
+                <RotateCcw size={14} /> Попробовать снова
+              </button>
+            )}
           </div>
-          <button onClick={handleReset} className="text-mist-400 hover:text-mist-100 cursor-pointer">
+          <button onClick={handleReset} aria-label="Закрыть" className="text-mist-400 hover:text-mist-100 cursor-pointer">
             <RotateCcw size={16} />
           </button>
         </div>
