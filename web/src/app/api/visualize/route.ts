@@ -134,8 +134,15 @@ export async function POST(req: Request) {
         tile: { id: tileKey, name: tileName },
       });
     } catch (err) {
-      console.error('[visualize:gpt-image-1] submit failed, fallback to legacy:', err);
-      // падаем в старый путь ниже
+      // fal — основной движок. Раньше здесь был тихий фолбэк в legacy visualize() →
+      // viaGemini, который маскировал настоящую ошибку fal чужим «429 Gemini».
+      // Теперь возвращаем реальную ошибку fal как есть, чтобы её было видно.
+      console.error('[visualize:gpt-image-1] submit failed:', err);
+      const message = err instanceof Error ? err.message : 'fal: не удалось поставить рендер в очередь';
+      return NextResponse.json(
+        { error: `fal (gpt-image-1): ${message}` },
+        { status: 502 },
+      );
     }
   }
 
