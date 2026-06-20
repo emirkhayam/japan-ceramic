@@ -17,22 +17,46 @@ type Props = {
   selectedSlug: string | null;
   onSelect: (tile: CatalogTile) => void;
   compact?: boolean;
+  /** Если передан — используем эти товары и НЕ грузим сами (данные живут в родителе,
+   *  поэтому перемонтирование селектора не теряет список). */
+  tiles?: CatalogTile[];
+  loading?: boolean;
 };
 
-export function CatalogTileSelector({ selectedSlug, onSelect, compact = false }: Props) {
-  const [tiles, setTiles] = useState<CatalogTile[]>([]);
-  const [loading, setLoading] = useState(true);
+export function CatalogTileSelector({
+  selectedSlug,
+  onSelect,
+  compact = false,
+  tiles: tilesProp,
+  loading: loadingProp,
+}: Props) {
+  const controlled = tilesProp !== undefined;
+  const [tilesState, setTilesState] = useState<CatalogTile[]>([]);
+  const [loadingState, setLoadingState] = useState(true);
   const [search, setSearch] = useState("");
 
+  // Фолбэк-загрузка только если товары НЕ переданы сверху.
   useEffect(() => {
+    if (controlled) return;
+    let alive = true;
     fetch("/api/catalog/products")
       .then((r) => r.json())
       .then((data) => {
-        setTiles(data.products);
-        setLoading(false);
+        if (alive) {
+          setTilesState(Array.isArray(data?.products) ? data.products : []);
+          setLoadingState(false);
+        }
       })
-      .catch(() => setLoading(false));
-  }, []);
+      .catch(() => {
+        if (alive) setLoadingState(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [controlled]);
+
+  const tiles = controlled ? tilesProp! : tilesState;
+  const loading = controlled ? !!loadingProp : loadingState;
 
   const filtered = useMemo(() => {
     if (!search) return tiles;

@@ -42,18 +42,35 @@ function VisualizePageInner() {
   const [resultMeta, setResultMeta] = useState<{ provider: string; durationMs: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [contacts, setContacts] = useState<{ whatsapp: string | null; mapLink: string | null; address: string | null } | null>(null);
+  // Товары грузим ОДИН раз здесь (в родителе) и передаём в селекторы пропом —
+  // тогда «Добавить ещё плитку» (перемонтирование селектора) не теряет список.
+  const [allTiles, setAllTiles] = useState<CatalogTile[]>([]);
+  const [tilesLoading, setTilesLoading] = useState(true);
 
-  // Pre-select tile from URL param
   useEffect(() => {
-    if (!initialSlug) return;
+    let alive = true;
     fetch("/api/catalog/products")
       .then((r) => r.json())
       .then((data) => {
-        const found = data.products.find((p: CatalogTile) => p.slug === initialSlug);
-        if (found) setSelectedTile(found);
+        if (alive) {
+          setAllTiles(Array.isArray(data?.products) ? data.products : []);
+          setTilesLoading(false);
+        }
       })
-      .catch(() => {});
-  }, [initialSlug]);
+      .catch(() => {
+        if (alive) setTilesLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Pre-select tile from URL param — из уже загруженного списка.
+  useEffect(() => {
+    if (!initialSlug || allTiles.length === 0) return;
+    const found = allTiles.find((p) => p.slug === initialSlug);
+    if (found) setSelectedTile(found);
+  }, [initialSlug, allTiles]);
 
   // Контакты сайта (WhatsApp/адрес/2ГИС) — из настроек, а не хардкод.
   useEffect(() => {
@@ -295,6 +312,8 @@ function VisualizePageInner() {
                   selectedSlug={selectedTile?.slug ?? null}
                   onSelect={handleSwapTile}
                   compact
+                  tiles={allTiles}
+                  loading={tilesLoading}
                 />
               </div>
             </div>
@@ -440,6 +459,8 @@ function VisualizePageInner() {
           <CatalogTileSelector
             selectedSlug={selectedTile?.slug ?? null}
             onSelect={setSelectedTile}
+            tiles={allTiles}
+            loading={tilesLoading}
           />
         </div>
       </div>
