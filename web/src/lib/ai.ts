@@ -833,6 +833,51 @@ export type GptImageInput = {
   quality?: 'low' | 'medium' | 'high';
 };
 
+// Собирает «раскладку» плитки (мини-стенку) из студийного фото — визуальный сигнал ФОРМЫ
+// (размер ячейки, пропорция, шов, порядовка, рельеф), чтобы модель не перекрашивала
+// обобщённую кладку. ratio = длина/высота плитки. Любая ошибка → null (рендерим без swatch).
+async function buildTiledSwatch(tileImageUrl: string, ratio: number): Promise<string | null> {
+  try {
+    const sharp = (await import('sharp')).default;
+    const tileBuf = await fetchToBuffer(tileImageUrl);
+    // Срезаем студийный фон, оставляя лицо плитки.
+    let face = tileBuf;
+    try {
+      const t = await sharp(tileBuf).trim({ threshold: 14 }).toBuffer();
+      const m = await sharp(t).metadata();
+      if ((m.width ?? 0) >= 24 && (m.height ?? 0) >= 24) face = t;
+    } catch {
+      /* фон не срезался — берём фото как есть */
+    }
+    const SW = 1024, SH = 1024, gap = 7;
+    const grout = { r: 92, g: 90, b: 88 };
+    const cols = ratio >= 2 ? 4 : ratio <= 1.2 ? 2 : 3;
+    const cellW = Math.floor((SW - gap * (cols + 1)) / cols);
+    const cellH = Math.max(8, Math.round(cellW / ratio));
+    const rows = Math.ceil((SH + cellH) / (cellH + gap)) + 1;
+    const cell = await sharp(face).resize(cellW, cellH, { fit: 'cover' }).toBuffer();
+    const comps: Array<{ input: Buffer; top: number; left: number }> = [];
+    for (let r = 0; r < rows; r++) {
+      const top = gap + r * (cellH + gap);
+      if (top + cellH > SH) break;
+      const off = r % 2 ? Math.round((cellW + gap) / 2) : 0; // кирпичная порядовка
+      for (let c = 0; c < cols + 1; c++) {
+        const left = gap + c * (cellW + gap) - off;
+        if (left < 0 || left + cellW > SW) continue; // только полностью влезающие ячейки
+        comps.push({ input: cell, top, left });
+      }
+    }
+    const out = await sharp({ create: { width: SW, height: SH, channels: 3, background: grout } })
+      .composite(comps)
+      .jpeg({ quality: 88 })
+      .toBuffer();
+    return `data:image/jpeg;base64,${out.toString('base64')}`;
+  } catch (e) {
+    console.error('[buildTiledSwatch]', e);
+    return null;
+  }
+}
+
 // Сборка входа для gpt-image-1 — общая для синхронного (subscribe) и асинхронного
 // (queue.submit) путей, чтобы промпт/формат/маска не разъезжались между ними.
 async function buildGptImageInput(input: GptImageInput) {
@@ -875,8 +920,23 @@ async function buildGptImageInput(input: GptImageInput) {
       sizeHint += ` The real floor is about ${input.floorAreaM2} m²; each tile covers ${tileAreaM2.toFixed(2)} m², so lay approximately ${total} tiles in total — match this count so the tile scale is physically correct.`;
     }
   }
+  // «Раскладка» плитки (мини-стенка) — визуальный сигнал ФОРМЫ (размер ячейки, пропорция,
+  // шов, порядовка, рельеф). Без неё модель перекрашивает обобщённую кладку. null → без неё.
+  const ratio = input.tileWmm && input.tileHmm ? input.tileWmm / input.tileHmm : null;
+  const swatchUrl = ratio ? await buildTiledSwatch(input.tileImageUrl, ratio) : null;
+
+  // Нумерация картинок: 1=фото, 2=плитка, [3=раскладка], [последняя=маска].
+  const images: string[] = [input.roomImageUrl, input.tileImageUrl];
+  let swatchIdx = 0;
+  let maskIdx = 0;
+  if (swatchUrl) { images.push(swatchUrl); swatchIdx = images.length; }
+  if (useMask) { images.push(input.maskImageUrl as string); maskIdx = images.length; }
+
   const maskNote = useMask
-    ? ' IMAGE 3 is a binary mask of IMAGE 1: change ONLY the white region, keep the black region pixel-identical.'
+    ? ` IMAGE ${maskIdx} is a binary mask of IMAGE 1: change ONLY the white region, keep the black region pixel-identical.`
+    : '';
+  const swatchNote = swatchUrl
+    ? ` IMAGE ${swatchIdx} shows the SAME tile laid as a wall — use it for the EXACT unit size, proportion, grout joints and coursing/bond.`
     : '';
 
   // Material-lock по названию товара — главная защита от «дерева вместо клинкера»:
@@ -894,17 +954,20 @@ async function buildGptImageInput(input: GptImageInput) {
       ' This is MOSAIC: use small mosaic tesserae in a fine regular grid. Reproduce the EXACT colour and pattern of IMAGE 2.';
   }
 
-  const prompt = `IMAGE 1 is a real photograph of a building. IMAGE 2 is a single ceramic tile sample called "${input.tileName}".${materialLock}${maskNote}
-Re-clad ${surfaceWord} in IMAGE 1 with the tile from IMAGE 2, laid as a regular tiled surface:
-- Follow the TRUE perspective and angles of every wall surface, wrapping correctly around building corners, with correct tile coursing and aligned grout lines.${sizeHint}
-- Reproduce the EXACT colour, hue, texture, finish and pattern of IMAGE 2 — do not invent a different tile, do not shift the colour, do not default to a generic brick or to wood.
+  const layoutRule = swatchUrl
+    ? `Lay the tiles EXACTLY like IMAGE ${swatchIdx}: same unit shape and size, same grout joints, same coursing/bond — do not change the format into a generic brick.`
+    : 'Lay the tiles in correct coursing with aligned grout lines, wrapping correctly around building corners.';
+
+  const prompt = `IMAGE 1 is a real photograph of a building. IMAGE 2 is a single sample of the tile "${input.tileName}" — use it for the EXACT colour, surface finish and 3D surface relief (grooves/bevels).${swatchNote}${materialLock}${maskNote}
+Re-clad ${surfaceWord} in IMAGE 1 with this tile:
+- ${layoutRule}${sizeHint}
+- Reproduce the EXACT colour, hue, finish and the 3D surface relief of IMAGE 2 — keep the surface textured/embossed, not flat; do not invent a different tile, do not shift the colour, do not default to a generic brick or to wood.
+- Follow the TRUE perspective and angles of every wall surface.
 - Do NOT cover or change windows, doors, frames, window sills, lamps, decorative trim, balconies, the roof, ground, sky, plants — keep all of them pixel-identical and tile cleanly AROUND them.
-- Match the original photo's lighting, shadows and reflections so it looks like the house was really finished with this tile.
+- Match the original photo's lighting, shadows and reflections.
 Output a single photorealistic edited photograph, nothing else.`;
 
-  const image_urls = useMask
-    ? [input.roomImageUrl, input.tileImageUrl, input.maskImageUrl as string]
-    : [input.roomImageUrl, input.tileImageUrl];
+  const image_urls = images;
 
   // Параметры зависят от модели. gpt-image-1 принимает input_fidelity/quality/image_size;
   // nano-banana / seedream / flux-2 edit — только prompt + image_urls (лишние поля могут

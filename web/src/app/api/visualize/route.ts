@@ -4,7 +4,7 @@ import { visualize, submitGptImageJob, submitEvfSamJob, RENDER_PROVIDER_LABEL, t
 import { lookupCache } from '@/lib/demo-cache';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { parseTileSize } from '@/lib/tile';
+import { resolveTileSize } from '@/lib/tile';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -95,7 +95,9 @@ export async function POST(req: Request) {
     tileDimsRaw = dbProduct.dimensions ?? null;
   }
 
-  const parsedDims = parseTileSize(tileDimsRaw);
+  // С фолбэком: даже если в каталоге размер не задан, оцениваем форму по названию/материалу,
+  // чтобы у визуализатора всегда был сигнал размера/пропорции (раскладка + масштаб).
+  const parsedDims = resolveTileSize(tileDimsRaw, tileName);
 
   // Основной движок — gpt-image-1 (через fal): понимает сцену, перспективу, окна/двери
   // и накладывает плитку реалистично. Рендер ~60-90с, поэтому НЕ ждём его в этом запросе

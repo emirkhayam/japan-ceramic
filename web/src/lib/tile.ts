@@ -28,6 +28,25 @@ export function parseTileSize(dimensions: string | null): { w: number; h: number
   return { w: nums[0], h: nums[1] };
 }
 
+// Размеры плитки С ФОЛБЭКОМ: если в каталоге размер не задан (dimensions=null,
+// напр. «YS 290-OR»), оцениваем форму по названию/материалу — чтобы у визуализатора
+// всегда был сигнал размера/пропорции (для «раскладки» и масштаба).
+export function resolveTileSize(dimensions: string | null, name?: string): { w: number; h: number } {
+  const parsed = parseTileSize(dimensions);
+  if (parsed) return parsed;
+  const nm = (name ?? "").toLowerCase();
+  if (nm.includes("клинкер") || nm.includes("clinker")) {
+    // У клинкера длина часто зашита в названии (напр. «YS 290-OR» → 290 мм).
+    const m = (name ?? "").match(/\b(\d{3})\b/);
+    const len = m ? parseInt(m[1], 10) : 0;
+    return { w: len >= 150 && len <= 400 ? len : 240, h: 65 };
+  }
+  if (nm.includes("мозаик") || nm.includes("mosaic")) return { w: 300, h: 300 };
+  if (nm.includes("керамогранит") || nm.includes("porcelain") || nm.includes("gres"))
+    return { w: 600, h: 600 };
+  return { w: 300, h: 300 };
+}
+
 // Шов между плитками по умолчанию (мм). Для клинкера типично ~10 мм.
 export const DEFAULT_GROUT_MM = 10;
 
