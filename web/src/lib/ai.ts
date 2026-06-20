@@ -819,6 +819,11 @@ export type GptImageInput = {
   surface: 'floor' | 'wall' | 'mask';
   /** Маска кисти (белое=куда класть). Только для surface==='mask' — передаётся как IMAGE 3. */
   maskImageUrl?: string;
+  /** Реальные размеры поверхности (введены пользователем) — для точного масштаба плитки.
+   *  Стена/выделение: ширина×высота, м. Пол: площадь, м². Необязательно. */
+  surfaceWidthM?: number;
+  surfaceHeightM?: number;
+  floorAreaM2?: number;
   quality?: 'low' | 'medium' | 'high';
 };
 
@@ -832,18 +837,46 @@ async function buildGptImageInput(input: GptImageInput) {
       : useMask
         ? 'ONLY the area marked white in the mask (IMAGE 3)'
         : 'the main facade walls (all visible wall planes of the building)';
-  const sizeHint =
-    input.tileWmm && input.tileHmm
-      ? ` Each individual tile/brick must look about ${input.tileWmm}×${input.tileHmm} mm in real-world scale — keep this size and the long narrow brick proportion; do not enlarge the bricks.`
-      : '';
+  // Форма/размер плитки — из РЕАЛЬНЫХ размеров товара, а не хардкод «кирпич».
+  // Клинкер (узкий, напр. 240×71) сам читается как кирпичная пропорция из чисел,
+  // а керамогранит (напр. 600×1200) — как крупноформат, чтобы модель не дробила его
+  // на мелкие кирпичи.
+  let sizeHint = '';
+  if (input.tileWmm && input.tileHmm) {
+    const w = input.tileWmm;
+    const h = input.tileHmm;
+    const longer = Math.max(w, h);
+    const shorter = Math.min(w, h);
+    const ratio = (longer / shorter).toFixed(2);
+    const orient = w === h ? 'square' : w > h ? 'wide landscape' : 'tall portrait';
+    const large = longer >= 400; // крупноформатная плитка
+    sizeHint =
+      ` Each individual tile is a ${w}×${h} mm rectangle (${orient}, aspect ratio ${ratio}:1)` +
+      (large
+        ? ' — a LARGE-FORMAT tile, NOT small bricks; use big tiles with thin grout lines.'
+        : '.') +
+      ' Lay the tiles at exactly this real-world size and proportion — do not shrink them into small bricks and do not enlarge them.';
+
+    // Если пользователь ввёл реальные размеры поверхности — даём ТОЧНОЕ число плиток,
+    // чтобы масштаб был физически верным, а не «на глаз».
+    if (input.surface !== 'floor' && input.surfaceWidthM && input.surfaceHeightM) {
+      const across = Math.max(1, Math.round((input.surfaceWidthM * 1000) / w));
+      const rows = Math.max(1, Math.round((input.surfaceHeightM * 1000) / h));
+      sizeHint += ` The real surface is about ${input.surfaceWidthM} m wide and ${input.surfaceHeightM} m tall, so lay approximately ${across} tiles across and ${rows} rows down — match this count exactly so the tile scale is physically correct, even if the tiles end up small.`;
+    } else if (input.surface === 'floor' && input.floorAreaM2) {
+      const tileAreaM2 = (w / 1000) * (h / 1000);
+      const total = Math.max(1, Math.round(input.floorAreaM2 / tileAreaM2));
+      sizeHint += ` The real floor is about ${input.floorAreaM2} m²; each tile covers ${tileAreaM2.toFixed(2)} m², so lay approximately ${total} tiles in total — match this count so the tile scale is physically correct.`;
+    }
+  }
   const maskNote = useMask
     ? ' IMAGE 3 is a binary mask of IMAGE 1: change ONLY the white region, keep the black region pixel-identical.'
     : '';
 
-  const prompt = `IMAGE 1 is a real photograph of a building. IMAGE 2 is a single clinker/brick tile sample called "${input.tileName}".${maskNote}
-Re-clad ${surfaceWord} in IMAGE 1 with the tile from IMAGE 2, tiled as a real brick wall:
-- Follow the TRUE perspective and angles of every wall surface, wrapping correctly around building corners, with natural brick coursing and grout lines.${sizeHint}
-- Reproduce the exact colour, texture and pattern of IMAGE 2 — do not invent a different brick.
+  const prompt = `IMAGE 1 is a real photograph of a building. IMAGE 2 is a single ceramic tile sample (could be clinker brick, large-format porcelain/gres or stone) called "${input.tileName}".${maskNote}
+Re-clad ${surfaceWord} in IMAGE 1 with the tile from IMAGE 2, laid as a regular tiled surface:
+- Follow the TRUE perspective and angles of every wall surface, wrapping correctly around building corners, with correct tile coursing and aligned grout lines.${sizeHint}
+- Reproduce the exact colour, texture, finish and pattern of IMAGE 2 — do not invent a different tile and do not default to a generic brick.
 - Do NOT cover or change windows, doors, frames, window sills, lamps, decorative trim, balconies, the roof, ground, sky, plants — keep all of them pixel-identical and tile cleanly AROUND them.
 - Match the original photo's lighting, shadows and reflections so it looks like the house was really finished with this tile.
 Output a single photorealistic edited photograph, nothing else.`;

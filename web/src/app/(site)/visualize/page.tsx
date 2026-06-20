@@ -16,6 +16,12 @@ function waLink(wa: string | null | undefined): string | null {
   return wa.startsWith("http") ? wa : `https://wa.me/${wa.replace(/[^\d]/g, "")}`;
 }
 
+// Парсит положительное число из строки поля (запятая → точка); иначе undefined.
+function parsePositive(s: string): number | undefined {
+  const n = parseFloat(s.replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 type Mode = 'floor' | 'wall' | 'mask';
 type Stage = 'idle' | 'generating' | 'result' | 'error';
 
@@ -32,6 +38,10 @@ function VisualizePageInner() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [selectedTile, setSelectedTile] = useState<CatalogTile | null>(null);
   const [mode, setMode] = useState<Mode>('mask');
+  // Реальные размеры поверхности (опционально) — чтобы ИИ положил плитку в верном масштабе.
+  const [widthM, setWidthM] = useState('');
+  const [heightM, setHeightM] = useState('');
+  const [areaM2, setAreaM2] = useState('');
   const [maskHasStrokes, setMaskHasStrokes] = useState(false);
   const maskRef = useRef<MaskCanvasHandle>(null);
   // Маска последней генерации — чтобы «Попробуйте другую» на экране результата
@@ -128,6 +138,10 @@ function VisualizePageInner() {
           tileId: tile.slug,
           surface: mode,
           maskImage,
+          // Реальные размеры поверхности (если введены) — для точного масштаба плитки.
+          regionWidthM: mode === 'floor' ? undefined : parsePositive(widthM),
+          regionHeightM: mode === 'floor' ? undefined : parsePositive(heightM),
+          floorAreaM2: mode === 'floor' ? parsePositive(areaM2) : undefined,
         }),
       });
       if (!res.ok) {
@@ -446,6 +460,61 @@ function VisualizePageInner() {
                 <p className="mt-2 text-xs text-mist-400">
                   Обведите участок прямоугольником (или закрасьте кистью), затем выберите клинкер. Несколько материалов комбинируйте по очереди.
                 </p>
+              )}
+            </section>
+          )}
+
+          {photo && (
+            <section className="card animate-slide-up p-5">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-mist-400">
+                Реальные размеры поверхности
+              </h2>
+              <p className="mt-1 mb-3 text-xs text-mist-400">
+                Необязательно, но помогает ИИ положить плитку в правильном масштабе, а не «на глаз».
+              </p>
+              {mode === 'floor' ? (
+                <label className="block">
+                  <span className="text-xs text-mist-400">Площадь пола, м²</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.1"
+                    value={areaM2}
+                    onChange={(e) => setAreaM2(e.target.value)}
+                    placeholder="напр. 18"
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm outline-none transition focus:border-white/30"
+                  />
+                </label>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-xs text-mist-400">Ширина, м</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.1"
+                      value={widthM}
+                      onChange={(e) => setWidthM(e.target.value)}
+                      placeholder="напр. 6"
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm outline-none transition focus:border-white/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-mist-400">Высота, м</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.1"
+                      value={heightM}
+                      onChange={(e) => setHeightM(e.target.value)}
+                      placeholder="напр. 3"
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm outline-none transition focus:border-white/30"
+                    />
+                  </label>
+                </div>
               )}
             </section>
           )}

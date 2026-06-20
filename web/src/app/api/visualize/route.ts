@@ -15,10 +15,12 @@ type Body = {
   surface: 'floor' | 'wall' | 'mask';
   /** PNG-маска (data URL): белое = куда класть плитку. Обязательна при surface==='mask'. */
   maskImage?: string;
-  /** Реальная ширина выделенного участка стены, в метрах. Для корректного масштаба клинкера. */
+  /** Реальная ширина поверхности (стена/выделение), в метрах. Для корректного масштаба плитки. */
   regionWidthM?: number;
-  /** Реальная высота выделенного участка, в метрах. Даёт число рядов плиток. */
+  /** Реальная высота поверхности (стена/выделение), в метрах. Даёт число рядов плиток. */
   regionHeightM?: number;
+  /** Реальная площадь пола, м² (для surface==='floor'). */
+  floorAreaM2?: number;
   provider?: Provider;
 };
 
@@ -113,6 +115,9 @@ export async function POST(req: Request) {
           tileHmm: parsedDims?.h,
           surface,
           maskImageUrl: maskImage,
+          surfaceWidthM: body.regionWidthM,
+          surfaceHeightM: body.regionHeightM,
+          floorAreaM2: body.floorAreaM2,
         }),
         surface === 'mask'
           ? submitEvfSamJob({ imageUrl: roomImage }).catch((e) => {
