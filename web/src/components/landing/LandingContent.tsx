@@ -31,7 +31,6 @@ interface CategoryCard {
 
 interface Props {
   user: { fullName: string; role: string } | null;
-  collections: { slug: string; name: string; img: string | null; desc: string }[];
   categories: CategoryCard[];
   contacts: Contacts;
 }
@@ -43,16 +42,17 @@ const CATEGORY_FALLBACK: CategoryCard[] = [
   { i: 2, img: "https://images.unsplash.com/photo-1703867110039-dc2ad34be121?q=80&w=1100&auto=format&fit=crop", title: "Мозаика", desc: "Детали, которые создают уникальный стиль", idx: "03", slug: "mosaic" },
 ];
 
-// Фолбэк для блока «Пространства», если опубликованных коллекций ещё нет.
-const ATMO_FALLBACK = [
-  { img: "https://images.unsplash.com/photo-1610659856580-323ec67011f9?q=80&w=1200&auto=format&fit=crop", name: "Ocean Minimal", desc: "Спокойствие океана и минимализм форм" },
-  { img: "https://images.unsplash.com/photo-1622372738946-62e02505feb3?q=80&w=1200&auto=format&fit=crop", name: "Dark Spa", desc: "Глубокие оттенки и расслабляющая атмосфера" },
-  { img: "https://images.unsplash.com/photo-1683339888007-426ea270374f?q=80&w=1200&auto=format&fit=crop", name: "Japanese Stone", desc: "Природная гармония и чистота линий" },
-  { img: "https://images.unsplash.com/photo-1698870157085-11632d2ddef8?q=80&w=1200&auto=format&fit=crop", name: "Warm Concrete", desc: "Тёплый бетон и уют в деталях" },
-  { img: "https://images.unsplash.com/photo-1640357960494-9242650846d3?q=80&w=1200&auto=format&fit=crop", name: "Silent Luxury", desc: "Роскошь в тишине и совершенстве" },
+// Фото витрин/коллекций из шоурума для блока «Пространства» на главной.
+const HOME_COLLECTIONS = [
+  "/home-collections/col-1.webp",
+  "/home-collections/col-2.webp",
+  "/home-collections/col-3.webp",
+  "/home-collections/col-4.webp",
+  "/home-collections/col-5.webp",
+  "/home-collections/col-6.webp",
 ];
 
-export default function LandingContent({ user, collections, categories, contacts }: Props) {
+export default function LandingContent({ user, categories, contacts }: Props) {
   const catCards = categories?.length ? categories : CATEGORY_FALLBACK;
   const showrooms = contacts.showrooms.length ? contacts.showrooms : [{ name: "Шоурум", address: null, hours: null, mapLink: null, mapEmbedUrl: null }];
   const [room, setRoom] = useState(0);
@@ -349,13 +349,9 @@ export default function LandingContent({ user, collections, categories, contacts
             </div>
           </div>
           <div className="rail reveal" data-d="1" id="atmoRail">
-            {(collections.length > 0
-              ? collections.map((c) => ({ img: c.img, name: c.name, desc: c.desc, href: `/collections/${c.slug}` }))
-              : ATMO_FALLBACK.map((a) => ({ ...a, href: "/collections" }))
-            ).map((a) => (
-              <Link key={a.name} href={a.href} className="atmo-card">
-                <img src={a.img || "/placeholder-tile.svg"} alt={a.name} />
-                <div className="atmo-meta"><h3>{a.name}</h3><p>{a.desc}</p><div className="ln" /></div>
+            {HOME_COLLECTIONS.map((img, i) => (
+              <Link key={img} href="/catalog" className="atmo-card" aria-label="Открыть каталог">
+                <img src={img} alt={`Коллекции Japan Ceramic — фото ${i + 1}`} loading="lazy" />
               </Link>
             ))}
           </div>
@@ -643,9 +639,10 @@ const landingStyles = `
   .atmo{background:linear-gradient(180deg,var(--bg-2),var(--bg))}
   .atmo .rail{margin-top:46px}
   .atmo-card{position:relative;flex:0 0 calc((100% - 96px)/5);min-width:232px;aspect-ratio:3/4.1;border-radius:3px;overflow:hidden;cursor:pointer;border:1px solid var(--line)}
-  .atmo-card img{width:100%;height:100%;object-fit:cover;filter:grayscale(.3) brightness(.74);transition:transform 1.2s var(--ease),filter 1.2s var(--ease)}
-  .atmo-card::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,10,15,.95) 0%,rgba(8,10,15,.2) 50%,rgba(8,10,15,.35) 100%)}
-  .atmo-card:hover img{transform:scale(1.08);filter:grayscale(0) brightness(.92)}
+  .atmo-card img{width:100%;height:100%;object-fit:cover;filter:grayscale(.12) brightness(.86);transition:transform 1.2s var(--ease),filter 1.2s var(--ease)}
+  .atmo-card::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,10,15,.5) 0%,rgba(8,10,15,0) 45%);opacity:.75;transition:opacity .6s var(--ease)}
+  .atmo-card:hover img{transform:scale(1.08);filter:grayscale(0) brightness(1)}
+  .atmo-card:hover::after{opacity:.35}
   .atmo-meta{position:absolute;left:22px;right:22px;bottom:24px;z-index:2}
   .atmo-meta h3{font-size:19px;font-weight:300;margin-bottom:7px}
   .atmo-meta p{font-size:12px;color:var(--ink-soft);line-height:1.45}

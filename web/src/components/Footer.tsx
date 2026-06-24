@@ -22,7 +22,6 @@ export default async function Footer() {
             </div>
             <div className="ft-col">
               <h4>Каталог</h4>
-              <Link href="/collections">Коллекции</Link>
               <Link href="/catalog?category=keramogranit">Керамогранит</Link>
               <Link href="/catalog?category=clinker">Клинкер</Link>
               <Link href="/catalog?category=mosaic">Мозаика</Link>
