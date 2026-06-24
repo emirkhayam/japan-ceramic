@@ -130,7 +130,7 @@ export default function LandingContent({ user, categories, contacts }: Props) {
   useEffect(() => {
     const el = atmoRef.current;
     if (!el) return;
-    let raf = 0, paused = false, dragging = false, startX = 0, startScroll = 0, acc = 0;
+    let raf = 0, paused = false, dragging = false, moved = false, startX = 0, startScroll = 0, acc = 0;
     const SPEED = 0.5; // px/кадр
     const half = () => el.scrollWidth / 2 || 1;
     const wrap = () => { const h = half(); if (el.scrollLeft >= h) el.scrollLeft -= h; else if (el.scrollLeft < 0) el.scrollLeft += h; };
@@ -145,15 +145,18 @@ export default function LandingContent({ user, categories, contacts }: Props) {
     raf = requestAnimationFrame(step);
     const onEnter = () => { paused = true; };
     const onLeave = () => { paused = false; };
-    const onDown = (e: PointerEvent) => { dragging = true; startX = e.clientX; startScroll = el.scrollLeft; el.classList.add("dragging"); el.setPointerCapture?.(e.pointerId); };
-    const onMove = (e: PointerEvent) => { if (!dragging) return; el.scrollLeft = startScroll - (e.clientX - startX); wrap(); };
+    const onDown = (e: PointerEvent) => { dragging = true; moved = false; startX = e.clientX; startScroll = el.scrollLeft; el.classList.add("dragging"); el.setPointerCapture?.(e.pointerId); };
+    const onMove = (e: PointerEvent) => { if (!dragging) return; const dx = e.clientX - startX; if (Math.abs(dx) > 4) moved = true; el.scrollLeft = startScroll - dx; wrap(); };
     const onUp = (e: PointerEvent) => { if (!dragging) return; dragging = false; el.classList.remove("dragging"); el.releasePointerCapture?.(e.pointerId); };
+    // Если это было перетаскивание — гасим клик по карточке-ссылке (иначе уведёт в каталог).
+    const onClick = (e: MouseEvent) => { if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; } };
     el.addEventListener("mouseenter", onEnter);
     el.addEventListener("mouseleave", onLeave);
     el.addEventListener("pointerdown", onDown);
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);
     el.addEventListener("pointercancel", onUp);
+    el.addEventListener("click", onClick, true);
     return () => {
       cancelAnimationFrame(raf);
       el.removeEventListener("mouseenter", onEnter);
@@ -162,6 +165,7 @@ export default function LandingContent({ user, categories, contacts }: Props) {
       el.removeEventListener("pointermove", onMove);
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);
+      el.removeEventListener("click", onClick, true);
     };
   }, []);
 
@@ -678,7 +682,9 @@ const landingStyles = `
   /* Карусель: горизонтальная лента с авто-прокруткой и перетаскиванием «ладошкой». */
   .atmo-track{display:flex;gap:20px;margin-top:46px;overflow-x:auto;cursor:grab;user-select:none;scrollbar-width:none;-ms-overflow-style:none;padding-bottom:4px}
   .atmo-track::-webkit-scrollbar{display:none}
-  .atmo-track.dragging{cursor:grabbing}
+  .atmo-track,.atmo-track .atmo-card{cursor:grab}
+  .atmo-track.dragging,.atmo-track.dragging .atmo-card{cursor:grabbing}
+  .atmo-card img{pointer-events:none}
   /* Карточка-«рамка»: тонкая золотистая обводка + внутренний кант + мягкая тень. */
   .atmo-card{flex:0 0 clamp(300px,32%,420px);position:relative;display:block;aspect-ratio:3/2;border-radius:6px;overflow:hidden;border:1px solid var(--line-2);box-shadow:0 18px 44px -28px rgba(0,0,0,.85);transition:transform .5s var(--ease),border-color .5s var(--ease),box-shadow .5s var(--ease)}
   .atmo-card::before{content:"";position:absolute;inset:0;z-index:2;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);pointer-events:none;transition:box-shadow .5s var(--ease)}
