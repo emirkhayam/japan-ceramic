@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 interface Showroom {
@@ -57,6 +57,7 @@ export default function LandingContent({ user, categories, contacts }: Props) {
   const showrooms = contacts.showrooms.length ? contacts.showrooms : [{ name: "Шоурум", address: null, hours: null, mapLink: null, mapEmbedUrl: null }];
   const [room, setRoom] = useState(0);
   const active = showrooms[Math.min(room, showrooms.length - 1)];
+  const atmoRef = useRef<HTMLDivElement>(null);
 
   // Scroll reveal
   useEffect(() => {
@@ -122,6 +123,46 @@ export default function LandingContent({ user, categories, contacts }: Props) {
       window.addEventListener("pointerup", () => { down = false; rail.style.cursor = ""; });
       rail.addEventListener("pointermove", (e) => { if (down) rail.scrollLeft = sl - (e.pageX - sx); });
     });
+  }, []);
+
+  // Карусель коллекций: плавная бесконечная авто-прокрутка + перетаскивание «ладошкой».
+  // Набор картинок продублирован в разметке — на середине бесшовно сбрасываем скролл.
+  useEffect(() => {
+    const el = atmoRef.current;
+    if (!el) return;
+    let raf = 0, paused = false, dragging = false, startX = 0, startScroll = 0, acc = 0;
+    const SPEED = 0.5; // px/кадр
+    const half = () => el.scrollWidth / 2 || 1;
+    const wrap = () => { const h = half(); if (el.scrollLeft >= h) el.scrollLeft -= h; else if (el.scrollLeft < 0) el.scrollLeft += h; };
+    const step = () => {
+      if (!paused && !dragging && el.scrollWidth > el.clientWidth) {
+        acc += SPEED;
+        const whole = Math.floor(acc);
+        if (whole >= 1) { acc -= whole; el.scrollLeft += whole; wrap(); }
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    const onEnter = () => { paused = true; };
+    const onLeave = () => { paused = false; };
+    const onDown = (e: PointerEvent) => { dragging = true; startX = e.clientX; startScroll = el.scrollLeft; el.classList.add("dragging"); el.setPointerCapture?.(e.pointerId); };
+    const onMove = (e: PointerEvent) => { if (!dragging) return; el.scrollLeft = startScroll - (e.clientX - startX); wrap(); };
+    const onUp = (e: PointerEvent) => { if (!dragging) return; dragging = false; el.classList.remove("dragging"); el.releasePointerCapture?.(e.pointerId); };
+    el.addEventListener("mouseenter", onEnter);
+    el.addEventListener("mouseleave", onLeave);
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+    return () => {
+      cancelAnimationFrame(raf);
+      el.removeEventListener("mouseenter", onEnter);
+      el.removeEventListener("mouseleave", onLeave);
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+    };
   }, []);
 
   // 3D category cards
@@ -338,10 +379,17 @@ export default function LandingContent({ user, categories, contacts }: Props) {
             <h2 className="reveal" data-d="1">Пространства.<br />Рождённые ощущениями</h2>
             <p className="reveal" data-d="2">Готовые интерьерные решения, где каждая текстура создаёт свою атмосферу.</p>
           </div>
-          <div className="atmo-grid reveal" data-d="1">
-            {HOME_COLLECTIONS.map((img, i) => (
-              <Link key={img} href="/catalog" className="atmo-card" aria-label="Открыть каталог">
-                <img src={img} alt={`Коллекции Japan Ceramic — фото ${i + 1}`} loading="lazy" />
+          <div className="atmo-track reveal" data-d="1" ref={atmoRef}>
+            {/* набор продублирован для бесшовной авто-прокрутки */}
+            {[...HOME_COLLECTIONS, ...HOME_COLLECTIONS].map((img, i) => (
+              <Link
+                key={i}
+                href="/catalog"
+                className="atmo-card"
+                aria-label="Открыть каталог"
+                aria-hidden={i >= HOME_COLLECTIONS.length ? true : undefined}
+              >
+                <img src={img} alt={`Коллекции Japan Ceramic — фото ${(i % HOME_COLLECTIONS.length) + 1}`} loading="lazy" draggable={false} />
               </Link>
             ))}
           </div>
@@ -627,9 +675,12 @@ const landingStyles = `
   .dz-tag{margin-top:14px;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-faint)}
 
   .atmo{background:linear-gradient(180deg,var(--bg-2),var(--bg))}
-  .atmo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:46px}
+  /* Карусель: горизонтальная лента с авто-прокруткой и перетаскиванием «ладошкой». */
+  .atmo-track{display:flex;gap:20px;margin-top:46px;overflow-x:auto;cursor:grab;user-select:none;scrollbar-width:none;-ms-overflow-style:none;padding-bottom:4px}
+  .atmo-track::-webkit-scrollbar{display:none}
+  .atmo-track.dragging{cursor:grabbing}
   /* Карточка-«рамка»: тонкая золотистая обводка + внутренний кант + мягкая тень. */
-  .atmo-card{position:relative;display:block;aspect-ratio:3/2;border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--line-2);box-shadow:0 18px 44px -28px rgba(0,0,0,.85);transition:transform .5s var(--ease),border-color .5s var(--ease),box-shadow .5s var(--ease)}
+  .atmo-card{flex:0 0 clamp(300px,32%,420px);position:relative;display:block;aspect-ratio:3/2;border-radius:6px;overflow:hidden;border:1px solid var(--line-2);box-shadow:0 18px 44px -28px rgba(0,0,0,.85);transition:transform .5s var(--ease),border-color .5s var(--ease),box-shadow .5s var(--ease)}
   .atmo-card::before{content:"";position:absolute;inset:0;z-index:2;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);pointer-events:none;transition:box-shadow .5s var(--ease)}
   .atmo-card img{width:100%;height:100%;object-fit:cover;filter:grayscale(.1) brightness(.9);transition:transform 1.2s var(--ease),filter 1.2s var(--ease)}
   .atmo-card:hover{transform:translateY(-4px);border-color:var(--color-gold-500);box-shadow:0 26px 60px -26px rgba(198,154,78,.4)}
@@ -718,7 +769,7 @@ const landingStyles = `
     .adv-grid{grid-template-columns:repeat(2,1fr)}
     .adv-item{padding-right:24px}
     .cat3d-stage{gap:4px;perspective:1500px}
-    .atmo-grid{grid-template-columns:repeat(2,1fr)}
+    .atmo-card{flex-basis:46%}
     .ct-grid{grid-template-columns:1fr;gap:36px}
   }
   @media(max-width:760px){
@@ -737,7 +788,8 @@ const landingStyles = `
     .cat3d{flex:0 0 80%;aspect-ratio:7/10;scroll-snap-align:center}
     .cat3d[data-i="0"] .cat3d-box,.cat3d[data-i="1"] .cat3d-box,.cat3d[data-i="2"] .cat3d-box{transform:none}
     .cat3d-edge,.cat3d-floor{display:none}
-    .atmo-grid{grid-template-columns:1fr;gap:16px}
+    .atmo-track{gap:14px}
+    .atmo-card{flex-basis:82%}
     .adv-grid{grid-template-columns:1fr}
     .stats{grid-template-columns:1fr 1fr;gap:26px}
     .brand-visual{aspect-ratio:3/3.6}
