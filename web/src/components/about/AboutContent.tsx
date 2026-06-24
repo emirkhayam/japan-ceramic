@@ -27,6 +27,16 @@ export default function AboutContent({
   const projectsCaption = portfolioCaption || DEFAULT_CAPTION;
   const wallRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLElement>(null);
+  const pjRef = useRef<HTMLDivElement>(null);
+
+  // Прокрутка карусели «Наши объекты» на одну карточку.
+  const scrollPj = (dir: number) => {
+    const el = pjRef.current;
+    if (!el) return;
+    const card = el.querySelector<HTMLElement>(".ab-pj-card");
+    const step = card ? card.offsetWidth + 16 : el.clientWidth * 0.8;
+    el.scrollBy({ left: dir * step, behavior: "smooth" });
+  };
 
   // Build tile wall + parallax
   useEffect(() => {
@@ -211,18 +221,26 @@ export default function AboutContent({
             <h2 className="ab-reveal" data-d="1">Наши объекты</h2>
             <p className="ab-reveal" data-d="2">{projectsCaption}</p>
           </div>
-          <div className="ab-pj-grid">
-            {projects.map((p, i) => (
-              <article key={`${p.title}-${i}`} className="ab-pj-card ab-reveal" data-d={(i % 3) ? String(i % 3) : undefined}>
-                <span className="ab-pj-arrow"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3.5 10.5L10.5 3.5M5 3.5h5.5V9" stroke="currentColor" strokeWidth="1.3" /></svg></span>
-                <div className="ab-pj-img"><img src={p.img} alt={p.title} /></div>
-                <div className="ab-pj-info">
-                  {p.tag && <span className="ab-pj-tag">{p.tag}</span>}
-                  {p.title && <h3>{p.title}</h3>}
-                  {p.meta && <span className="ab-pj-meta">{p.meta}</span>}
-                </div>
-              </article>
-            ))}
+          <div className="ab-pj-carousel ab-reveal">
+            <button type="button" className="ab-pj-nav ab-pj-prev" aria-label="Предыдущие" onClick={() => scrollPj(-1)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+            <div className="ab-pj-track" ref={pjRef}>
+              {projects.map((p, i) => (
+                <article key={`${p.title}-${i}`} className="ab-pj-card">
+                  <span className="ab-pj-arrow"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3.5 10.5L10.5 3.5M5 3.5h5.5V9" stroke="currentColor" strokeWidth="1.3" /></svg></span>
+                  <div className="ab-pj-img"><img src={p.img} alt={p.title} /></div>
+                  <div className="ab-pj-info">
+                    {p.tag && <span className="ab-pj-tag">{p.tag}</span>}
+                    {p.title && <h3>{p.title}</h3>}
+                    {p.meta && <span className="ab-pj-meta">{p.meta}</span>}
+                  </div>
+                </article>
+              ))}
+            </div>
+            <button type="button" className="ab-pj-nav ab-pj-next" aria-label="Следующие" onClick={() => scrollPj(1)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
           </div>
         </div>
       </section>
@@ -382,12 +400,20 @@ const aboutStyles = `
   .ab-mf-tile span{position:absolute;left:18px;top:14px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft)}
 
   .ab-projects{background:var(--bg-2)}
-  .ab-pj-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-  .ab-pj-card{position:relative;border-radius:4px;overflow:hidden;cursor:pointer;border:1px solid var(--line);transition:border-color .4s var(--ease),transform .5s var(--ease)}
+  .ab-pj-carousel{position:relative}
+  .ab-pj-track{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:4px 2px 14px;scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+  .ab-pj-track::-webkit-scrollbar{height:6px}
+  .ab-pj-track::-webkit-scrollbar-track{background:transparent}
+  .ab-pj-track::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
+  .ab-pj-card{flex:0 0 auto;width:clamp(290px,31%,390px);scroll-snap-align:start;position:relative;border-radius:4px;overflow:hidden;cursor:pointer;border:1px solid var(--line);transition:border-color .4s var(--ease),transform .5s var(--ease)}
   .ab-pj-card:hover{border-color:var(--line-2);transform:translateY(-4px)}
-  .ab-pj-img{aspect-ratio:4/5;overflow:hidden;background:linear-gradient(152deg,#232b3b,#11161f 76%)}
-  .ab-pj-img img{width:100%;height:100%;object-fit:cover;filter:grayscale(.32) brightness(.6) contrast(1.05);transition:transform .85s var(--ease),filter .6s var(--ease)}
-  .ab-pj-card:hover .ab-pj-img img{transform:scale(1.07);filter:grayscale(.1) brightness(.8)}
+  .ab-pj-img{aspect-ratio:3/4;overflow:hidden;background:linear-gradient(152deg,#232b3b,#11161f 76%)}
+  .ab-pj-img img{width:100%;height:100%;object-fit:cover;object-position:center;filter:grayscale(.18) brightness(.74) contrast(1.03);transition:filter .6s var(--ease)}
+  .ab-pj-card:hover .ab-pj-img img{filter:grayscale(0) brightness(.86)}
+  .ab-pj-nav{position:absolute;top:42%;transform:translateY(-50%);z-index:6;width:48px;height:48px;border-radius:50%;border:1px solid var(--line-2);background:rgba(8,10,15,.74);backdrop-filter:blur(8px);color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .35s var(--ease),border-color .35s var(--ease)}
+  .ab-pj-nav:hover{background:rgba(8,10,15,.96);border-color:rgba(255,255,255,.4)}
+  .ab-pj-prev{left:-12px}
+  .ab-pj-next{right:-12px}
   .ab-pj-info{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:26px 24px;background:linear-gradient(180deg,transparent,rgba(8,10,15,.55) 38%,rgba(8,10,15,.93))}
   .ab-pj-tag{font-size:10.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--accent)}
   .ab-pj-info h3{font-size:20px;font-weight:300;margin:9px 0 5px}
@@ -464,7 +490,7 @@ const aboutStyles = `
   @media(max-width:1080px){
     .ab-sec{padding:90px 0}
     .ab-mf-grid,.ab-why-grid{grid-template-columns:1fr;gap:40px}
-    .ab-pj-grid{grid-template-columns:repeat(2,1fr)}
+    .ab-pj-card{width:clamp(260px,46%,360px)}
     .ab-stiles{grid-template-columns:repeat(2,1fr)}
   }
   @media(max-width:720px){
@@ -475,7 +501,8 @@ const aboutStyles = `
     .ab-hero h1 .ab-ln span{transform:none}
     .ab-hero-veil{background:linear-gradient(180deg,rgba(8,10,15,.9),rgba(8,10,15,.66) 42%,rgba(8,10,15,.82))}
     .ab-wall{grid-template-columns:repeat(6,1fr)}
-    .ab-pj-grid{grid-template-columns:1fr}
+    .ab-pj-card{width:84%}
+    .ab-pj-nav{display:none}
     .ab-stiles{grid-template-columns:1fr}
     .ab-tl-head{flex-direction:column;align-items:flex-start;gap:22px}
     .ab-cta{padding:74px 0}
