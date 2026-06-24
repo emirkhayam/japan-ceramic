@@ -47,7 +47,8 @@ export default function AboutContent({
     let dragging = false;
     let startX = 0;
     let startScroll = 0;
-    const SPEED = 0.45; // px за кадр — медленно и плавно
+    let acc = 0; // накопитель долей пикселя (scrollLeft округляется до целого)
+    const SPEED = 0.5; // px за кадр — медленно и плавно (~30px/с)
     const half = () => el.scrollWidth / 2 || 1; // ширина одного (недублированного) набора
     const wrap = () => {
       const h = half();
@@ -56,8 +57,13 @@ export default function AboutContent({
     };
     const step = () => {
       if (!paused && !dragging && el.scrollWidth > el.clientWidth) {
-        el.scrollLeft += SPEED;
-        wrap();
+        acc += SPEED;
+        const whole = Math.floor(acc);
+        if (whole >= 1) {
+          acc -= whole;
+          el.scrollLeft += whole;
+          wrap();
+        }
       }
       raf = requestAnimationFrame(step);
     };
