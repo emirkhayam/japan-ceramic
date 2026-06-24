@@ -150,6 +150,8 @@ export default function LandingContent({ user, categories, contacts }: Props) {
     const onUp = (e: PointerEvent) => { if (!dragging) return; dragging = false; el.classList.remove("dragging"); el.releasePointerCapture?.(e.pointerId); };
     // Если это было перетаскивание — гасим клик по карточке-ссылке (иначе уведёт в каталог).
     const onClick = (e: MouseEvent) => { if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; } };
+    const onDragStart = (e: Event) => e.preventDefault(); // не давать браузеру тащить ссылку/картинку
+    el.addEventListener("dragstart", onDragStart);
     el.addEventListener("mouseenter", onEnter);
     el.addEventListener("mouseleave", onLeave);
     el.addEventListener("pointerdown", onDown);
@@ -166,6 +168,7 @@ export default function LandingContent({ user, categories, contacts }: Props) {
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);
       el.removeEventListener("click", onClick, true);
+      el.removeEventListener("dragstart", onDragStart);
     };
   }, []);
 
@@ -392,6 +395,8 @@ export default function LandingContent({ user, categories, contacts }: Props) {
                 className="atmo-card"
                 aria-label="Открыть каталог"
                 aria-hidden={i >= HOME_COLLECTIONS.length ? true : undefined}
+                draggable={false}
+                onDragStart={(e) => e.preventDefault()}
               >
                 <img src={img} alt={`Коллекции Japan Ceramic — фото ${(i % HOME_COLLECTIONS.length) + 1}`} loading="lazy" draggable={false} />
               </Link>

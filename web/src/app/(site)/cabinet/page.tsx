@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FolderOpen, Heart, FolderPlus } from "lucide-react";
+import { FolderOpen, Heart, FolderPlus, Sparkles } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import CreateProjectForm from "@/components/CreateProjectForm";
@@ -17,6 +17,7 @@ export default async function CabinetPage() {
   });
 
   const favCount = await prisma.favorite.count({ where: { userId: user.id } });
+  const vizCount = await prisma.savedVisualization.count({ where: { userId: user.id } });
 
   return (
     <section className="py-20">
@@ -57,6 +58,15 @@ export default async function CabinetPage() {
               В избранном
             </div>
           </div>
+          <Link href="/cabinet/visualizations" className="px-5 py-5 bg-[rgba(255,255,255,.045)] border border-[var(--line-2)] rounded-xl flex-1 max-w-[190px] hover:border-[rgba(255,255,255,.32)] transition-colors">
+            <Sparkles size={18} strokeWidth={1.6} className="text-[var(--color-gold-400)] mb-3" />
+            <div className="tabular-nums text-[32px] font-medium leading-none tracking-tight">
+              {vizCount}
+            </div>
+            <div className="text-[11px] text-[var(--ink-mute)] mt-2 tracking-[.06em] uppercase font-medium">
+              Визуализаций
+            </div>
+          </Link>
         </div>
 
         {/* Projects */}
@@ -102,6 +112,17 @@ export default async function CabinetPage() {
           <h3 className="text-[20px] font-light tracking-tight">Избранное</h3>
           <Link
             href="/cabinet/favorites"
+            className="px-5 py-2.5 text-[12px] font-medium border border-[var(--line)] rounded-md text-[var(--ink-soft)] hover:bg-[rgba(255,255,255,.04)] hover:border-[var(--line-2)] transition-all duration-200 cursor-pointer"
+          >
+            Смотреть всё
+          </Link>
+        </div>
+
+        {/* My visualizations link */}
+        <div className="flex justify-between items-center pt-6 mt-6 border-t border-[var(--line)]">
+          <h3 className="text-[20px] font-light tracking-tight">Мои визуализации</h3>
+          <Link
+            href="/cabinet/visualizations"
             className="px-5 py-2.5 text-[12px] font-medium border border-[var(--line)] rounded-md text-[var(--ink-soft)] hover:bg-[rgba(255,255,255,.04)] hover:border-[var(--line-2)] transition-all duration-200 cursor-pointer"
           >
             Смотреть всё

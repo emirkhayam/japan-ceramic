@@ -107,6 +107,24 @@ function VisualizePageInner() {
   const maskReady = mode !== 'mask' || maskHasStrokes;
   const canGenerate = photo && selectedTile && maskReady && stage !== 'generating';
 
+  // Авто-сохранение результата в «Мои визуализации» (личный кабинет). Один раз на результат.
+  const savedUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (stage !== 'result' || !resultUrl) return;
+    if (savedUrlRef.current === resultUrl) return;
+    savedUrlRef.current = resultUrl;
+    fetch('/api/visualize/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageUrl: resultUrl,
+        tileSlug: selectedTile?.slug,
+        tileName: selectedTile?.name,
+        surface: mode,
+      }),
+    }).catch(() => {});
+  }, [stage, resultUrl, selectedTile, mode]);
+
   // Опрос статуса асинхронного рендера до готовности (или ошибки/таймаута).
   async function pollVisualization(requestId: string): Promise<string> {
     const deadline = Date.now() + 4 * 60 * 1000; // ждём максимум 4 минуты
@@ -268,12 +286,12 @@ function VisualizePageInner() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           <div className="card overflow-hidden">
-            <div className="relative aspect-[16/10] w-full bg-ink-900">
+            <div className="relative flex w-full justify-center bg-ink-900">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={resultUrl}
                 alt="Результат визуализации"
-                className="h-full w-full object-cover"
+                className="block h-auto max-h-[78vh] w-auto max-w-full object-contain"
               />
               <div className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-gold-500 px-3 py-1 text-xs font-semibold text-ink-900">
                 <Sparkles size={12} /> ИИ-визуализация

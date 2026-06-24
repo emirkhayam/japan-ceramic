@@ -21,6 +21,7 @@ model User {
   projects       DesignerProject[]
   favorites      Favorite[]
   visualizations VisualizationLog[]
+  savedVisualizations SavedVisualization[]
 
   @@map("users")
 }
@@ -54,6 +55,22 @@ model VisualizationLog {
   @@index([userId])
   @@index([createdAt])
   @@map("visualization_logs")
+}
+
+// Сохранённые результаты визуализаций пользователя («Мои визуализации» в кабинете).
+model SavedVisualization {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  imageUrl  String
+  tileSlug  String?
+  tileName  String?
+  surface   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("saved_visualizations")
 }
 
 model Category {
