@@ -81,15 +81,6 @@ function IconLogout({ className }: { className?: string }) {
   );
 }
 
-function IconCollections({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="2" width="14" height="10" rx="1.5" />
-      <path d="M4.5 14.5h9M6 17h6" />
-    </svg>
-  );
-}
-
 function IconSettings({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
@@ -121,7 +112,6 @@ function IconPortfolio({ className }: { className?: string }) {
 const items = [
   { href: "/admin", label: "Дашборд", exact: true, Icon: IconDashboard },
   { href: "/admin/products", label: "Товары", Icon: IconProducts },
-  { href: "/admin/collections", label: "Коллекции", Icon: IconCollections },
   { href: "/admin/categories", label: "Категории", Icon: IconCategories },
   { href: "/admin/leads", label: "Заявки", Icon: IconLeads },
   { href: "/admin/users", label: "Пользователи", Icon: IconUsers },

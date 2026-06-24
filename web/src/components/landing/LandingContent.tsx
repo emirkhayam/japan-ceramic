@@ -333,22 +333,12 @@ export default function LandingContent({ user, categories, contacts }: Props) {
       {/* ATMOSPHERES */}
       <section className="atmo sec-pad" id="atmospheres">
         <div className="wrap">
-          <div className="sec-top sec-head">
-            <div>
-              <div className="eyebrow reveal">Коллекции</div>
-              <h2 className="reveal" data-d="1">Пространства.<br />Рождённые ощущениями</h2>
-              <p className="reveal" data-d="2">Готовые интерьерные решения, где каждая текстура создаёт свою атмосферу.</p>
-            </div>
-            <div className="arrows reveal" data-d="2">
-              <button data-rail="atmoRail" data-dir="-1" aria-label="Назад">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M15 8H1M6 3L1 8l5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
-              </button>
-              <button data-rail="atmoRail" data-dir="1" aria-label="Вперёд">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 8h14M10 3l5 5-5 5" stroke="currentColor" strokeWidth="1.4" /></svg>
-              </button>
-            </div>
+          <div className="sec-head">
+            <div className="eyebrow reveal">Коллекции</div>
+            <h2 className="reveal" data-d="1">Пространства.<br />Рождённые ощущениями</h2>
+            <p className="reveal" data-d="2">Готовые интерьерные решения, где каждая текстура создаёт свою атмосферу.</p>
           </div>
-          <div className="rail reveal" data-d="1" id="atmoRail">
+          <div className="atmo-grid reveal" data-d="1">
             {HOME_COLLECTIONS.map((img, i) => (
               <Link key={img} href="/catalog" className="atmo-card" aria-label="Открыть каталог">
                 <img src={img} alt={`Коллекции Japan Ceramic — фото ${i + 1}`} loading="lazy" />
@@ -637,17 +627,14 @@ const landingStyles = `
   .dz-tag{margin-top:14px;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-faint)}
 
   .atmo{background:linear-gradient(180deg,var(--bg-2),var(--bg))}
-  .atmo .rail{margin-top:46px}
-  .atmo-card{position:relative;flex:0 0 calc((100% - 96px)/5);min-width:232px;aspect-ratio:3/4.1;border-radius:3px;overflow:hidden;cursor:pointer;border:1px solid var(--line)}
-  .atmo-card img{width:100%;height:100%;object-fit:cover;filter:grayscale(.12) brightness(.86);transition:transform 1.2s var(--ease),filter 1.2s var(--ease)}
-  .atmo-card::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,10,15,.5) 0%,rgba(8,10,15,0) 45%);opacity:.75;transition:opacity .6s var(--ease)}
-  .atmo-card:hover img{transform:scale(1.08);filter:grayscale(0) brightness(1)}
-  .atmo-card:hover::after{opacity:.35}
-  .atmo-meta{position:absolute;left:22px;right:22px;bottom:24px;z-index:2}
-  .atmo-meta h3{font-size:19px;font-weight:300;margin-bottom:7px}
-  .atmo-meta p{font-size:12px;color:var(--ink-soft);line-height:1.45}
-  .atmo-meta .ln{width:24px;height:1px;background:var(--line-2);margin-top:14px;transition:width .5s var(--ease)}
-  .atmo-card:hover .atmo-meta .ln{width:54px;background:var(--color-gold-500)}
+  .atmo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:46px}
+  /* Карточка-«рамка»: тонкая золотистая обводка + внутренний кант + мягкая тень. */
+  .atmo-card{position:relative;display:block;aspect-ratio:3/2;border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--line-2);box-shadow:0 18px 44px -28px rgba(0,0,0,.85);transition:transform .5s var(--ease),border-color .5s var(--ease),box-shadow .5s var(--ease)}
+  .atmo-card::before{content:"";position:absolute;inset:0;z-index:2;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);pointer-events:none;transition:box-shadow .5s var(--ease)}
+  .atmo-card img{width:100%;height:100%;object-fit:cover;filter:grayscale(.1) brightness(.9);transition:transform 1.2s var(--ease),filter 1.2s var(--ease)}
+  .atmo-card:hover{transform:translateY(-4px);border-color:var(--color-gold-500);box-shadow:0 26px 60px -26px rgba(198,154,78,.4)}
+  .atmo-card:hover::before{box-shadow:inset 0 0 0 1px rgba(198,154,78,.45)}
+  .atmo-card:hover img{transform:scale(1.05);filter:grayscale(0) brightness(1)}
 
   .adv{background:var(--bg)}
   .adv-head{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:end;margin-bottom:66px}
@@ -731,7 +718,7 @@ const landingStyles = `
     .adv-grid{grid-template-columns:repeat(2,1fr)}
     .adv-item{padding-right:24px}
     .cat3d-stage{gap:4px;perspective:1500px}
-    .atmo-card{flex:0 0 60%}
+    .atmo-grid{grid-template-columns:repeat(2,1fr)}
     .ct-grid{grid-template-columns:1fr;gap:36px}
   }
   @media(max-width:760px){
@@ -750,7 +737,7 @@ const landingStyles = `
     .cat3d{flex:0 0 80%;aspect-ratio:7/10;scroll-snap-align:center}
     .cat3d[data-i="0"] .cat3d-box,.cat3d[data-i="1"] .cat3d-box,.cat3d[data-i="2"] .cat3d-box{transform:none}
     .cat3d-edge,.cat3d-floor{display:none}
-    .atmo-card{flex:0 0 72%}
+    .atmo-grid{grid-template-columns:1fr;gap:16px}
     .adv-grid{grid-template-columns:1fr}
     .stats{grid-template-columns:1fr 1fr;gap:26px}
     .brand-visual{aspect-ratio:3/3.6}

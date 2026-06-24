@@ -127,7 +127,7 @@ export default async function DesignersPage() {
             <img
               src="/designers-mosaic.webp"
               alt="Шоурум Japan Ceramic — стена мозаики"
-              className="aspect-[4/3] h-full w-full object-cover"
+              className="aspect-[3/2] h-full w-full object-cover"
             />
             <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/[.06]" />
           </div>
@@ -218,7 +218,7 @@ export default async function DesignersPage() {
               <img
                 src="/designers-slabs.webp"
                 alt="Шоурум Japan Ceramic — крупноформатный керамогранит"
-                className="aspect-[4/3] h-full w-full object-cover"
+                className="aspect-[3/2] h-full w-full object-cover"
               />
               <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/[.06]" />
             </div>
