@@ -39,6 +39,22 @@ export async function POST(req: Request) {
     );
   }
 
+  // Дневной лимит визуализаций на пользователя (админов не ограничиваем).
+  const DAILY_VIZ_LIMIT = 5;
+  if (user.role !== 'admin') {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const todayCount = await prisma.visualizationLog.count({
+      where: { userId: user.id, createdAt: { gte: dayStart } },
+    });
+    if (todayCount >= DAILY_VIZ_LIMIT) {
+      return NextResponse.json(
+        { error: `Дневной лимит визуализаций исчерпан (${DAILY_VIZ_LIMIT} в день). Попробуйте завтра.` },
+        { status: 429 },
+      );
+    }
+  }
+
   let body: Body;
   try {
     body = await req.json();
