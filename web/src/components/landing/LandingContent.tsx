@@ -408,7 +408,7 @@ export default function LandingContent({ user, collections, categories, contacts
             </div>
           </div>
           <div className="brand-visual reveal" data-d="2">
-            <img src="https://images.unsplash.com/photo-1683339888007-426ea270374f?q=80&w=1600&auto=format&fit=crop" alt="Japan Ceramic showroom" />
+            <img src="/showroom.webp" alt="Шоурум Japan Ceramic" />
             <div className="brand-sign"><b>JAPAN CERAMIC</b><span>SHOWROOM</span></div>
             <div className="showroom-card">
               <div className="eyebrow">Наш шоурум</div>
