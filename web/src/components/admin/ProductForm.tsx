@@ -42,6 +42,44 @@ interface ProductData {
   images: string[];
 }
 
+// Прокси перед приложением режет тело запроса (~25 МБ), а сервер всё равно ужимает
+// фото до 2000px WebP при загрузке. Поэтому тяжёлые снимки уменьшаем прямо в браузере
+// ДО отправки: на финальное качество в каталоге это не влияет, а лимит прокси больше
+// не мешает. Порог берём с запасом ниже лимита.
+const CLIENT_COMPRESS_THRESHOLD = 15 * 1024 * 1024; // 15 МБ
+const CLIENT_MAX_DIM = 2000; // как на сервере (web/src/app/api/admin/upload/route.ts)
+
+async function downscaleImageForUpload(file: File): Promise<File> {
+  // imageOrientation:"from-image" — учитываем EXIF-поворот, иначе фото с телефона ляжет боком
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const scale = Math.min(1, CLIENT_MAX_DIM / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas 2d context unavailable");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close?.();
+
+  const toBlob = (type: string, q?: number) =>
+    new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, q));
+
+  // PNG без потерь — финальный WebP сделает сервер (одно лоси-кодирование).
+  // Если PNG вдруг тяжёлый — отдаём JPEG, чтобы гарантированно влезть под лимит.
+  let blob = await toBlob("image/png");
+  if (!blob || blob.size > 12 * 1024 * 1024) {
+    blob = await toBlob("image/jpeg", 0.92);
+  }
+  if (!blob) throw new Error("canvas toBlob failed");
+
+  const ext = blob.type === "image/png" ? "png" : "jpg";
+  const base = file.name.replace(/\.[^.]+$/, "") || "image";
+  return new File([blob], `${base}.${ext}`, { type: blob.type });
+}
+
 export default function ProductForm({
   categories,
   initial,
@@ -119,8 +157,20 @@ export default function ProductForm({
     setUploading(true);
     setUploadStatus(null);
     try {
+      // Тяжёлые фото ужимаем в браузере, чтобы не упереться в лимит прокси (~25 МБ).
+      let toSend = file;
+      if (file.type.startsWith("image/") && file.size > CLIENT_COMPRESS_THRESHOLD) {
+        try {
+          setUploadStatus({ type: "success", message: `Сжимаю большое фото «${file.name}»…` });
+          toSend = await downscaleImageForUpload(file);
+        } catch (err) {
+          // Если сжать не вышло (старый браузер и т.п.) — пробуем загрузить оригинал.
+          console.error("Client-side image downscale failed, sending original:", err);
+        }
+      }
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", toSend);
       const res = await fetch("/api/admin/upload", { method: "POST", body: formData });
       if (res.ok) {
         const data = await res.json();
