@@ -29,7 +29,7 @@ export default function AboutContent({
   const heroRef = useRef<HTMLElement>(null);
   const pjRef = useRef<HTMLDivElement>(null);
 
-  // Прокрутка карусели «Наши объекты» на одну карточку.
+  // Прокрутка карусели «Наши объекты» на одну карточку (стрелки).
   const scrollPj = (dir: number) => {
     const el = pjRef.current;
     if (!el) return;
@@ -37,6 +37,70 @@ export default function AboutContent({
     const step = card ? card.offsetWidth + 16 : el.clientWidth * 0.8;
     el.scrollBy({ left: dir * step, behavior: "smooth" });
   };
+
+  // Авто-прокрутка карусели (бесшовная, набор продублирован) + перетаскивание «ладошкой».
+  useEffect(() => {
+    const el = pjRef.current;
+    if (!el) return;
+    let raf = 0;
+    let paused = false;
+    let dragging = false;
+    let startX = 0;
+    let startScroll = 0;
+    const SPEED = 0.45; // px за кадр — медленно и плавно
+    const half = () => el.scrollWidth / 2 || 1; // ширина одного (недублированного) набора
+    const wrap = () => {
+      const h = half();
+      if (el.scrollLeft >= h) el.scrollLeft -= h;
+      else if (el.scrollLeft < 0) el.scrollLeft += h;
+    };
+    const step = () => {
+      if (!paused && !dragging && el.scrollWidth > el.clientWidth) {
+        el.scrollLeft += SPEED;
+        wrap();
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+
+    const onEnter = () => { paused = true; };
+    const onLeave = () => { paused = false; };
+    const onDown = (e: PointerEvent) => {
+      dragging = true;
+      startX = e.clientX;
+      startScroll = el.scrollLeft;
+      el.classList.add("dragging");
+      el.setPointerCapture?.(e.pointerId);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!dragging) return;
+      el.scrollLeft = startScroll - (e.clientX - startX);
+      wrap();
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!dragging) return;
+      dragging = false;
+      el.classList.remove("dragging");
+      el.releasePointerCapture?.(e.pointerId);
+    };
+
+    el.addEventListener("mouseenter", onEnter);
+    el.addEventListener("mouseleave", onLeave);
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      el.removeEventListener("mouseenter", onEnter);
+      el.removeEventListener("mouseleave", onLeave);
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+    };
+  }, [projects.length]);
 
   // Build tile wall + parallax
   useEffect(() => {
@@ -226,10 +290,11 @@ export default function AboutContent({
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
             <div className="ab-pj-track" ref={pjRef}>
-              {projects.map((p, i) => (
-                <article key={`${p.title}-${i}`} className="ab-pj-card">
+              {/* дублируем набор для бесшовной авто-прокрутки */}
+              {[...projects, ...projects].map((p, i) => (
+                <article key={`${p.title}-${i}`} className="ab-pj-card" aria-hidden={i >= projects.length ? true : undefined}>
                   <span className="ab-pj-arrow"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3.5 10.5L10.5 3.5M5 3.5h5.5V9" stroke="currentColor" strokeWidth="1.3" /></svg></span>
-                  <div className="ab-pj-img"><img src={p.img} alt={p.title} /></div>
+                  <div className="ab-pj-img"><img src={p.img} alt={p.title} draggable={false} /></div>
                   <div className="ab-pj-info">
                     {p.tag && <span className="ab-pj-tag">{p.tag}</span>}
                     {p.title && <h3>{p.title}</h3>}
@@ -401,11 +466,10 @@ const aboutStyles = `
 
   .ab-projects{background:var(--bg-2)}
   .ab-pj-carousel{position:relative}
-  .ab-pj-track{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:4px 2px 14px;scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
-  .ab-pj-track::-webkit-scrollbar{height:6px}
-  .ab-pj-track::-webkit-scrollbar-track{background:transparent}
-  .ab-pj-track::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
-  .ab-pj-card{flex:0 0 auto;width:clamp(290px,31%,390px);scroll-snap-align:start;position:relative;border-radius:4px;overflow:hidden;cursor:pointer;border:1px solid var(--line);transition:border-color .4s var(--ease),transform .5s var(--ease)}
+  .ab-pj-track{display:flex;gap:16px;overflow-x:auto;padding:4px 2px 14px;cursor:grab;user-select:none;scrollbar-width:none;-ms-overflow-style:none}
+  .ab-pj-track::-webkit-scrollbar{display:none}
+  .ab-pj-track.dragging{cursor:grabbing}
+  .ab-pj-card{flex:0 0 auto;width:clamp(290px,31%,390px);position:relative;border-radius:4px;overflow:hidden;border:1px solid var(--line);transition:border-color .4s var(--ease),transform .5s var(--ease)}
   .ab-pj-card:hover{border-color:var(--line-2);transform:translateY(-4px)}
   .ab-pj-img{aspect-ratio:3/4;overflow:hidden;background:linear-gradient(152deg,#232b3b,#11161f 76%)}
   .ab-pj-img img{width:100%;height:100%;object-fit:cover;object-position:center;filter:grayscale(.18) brightness(.74) contrast(1.03);transition:filter .6s var(--ease)}
