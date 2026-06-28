@@ -21,13 +21,54 @@ type Props = {
   onChange: (dataUrl: string | null) => void;
 };
 
+// Запасной путь (старый браузер без createImageBitmap-ориентации): сырой data URL.
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result;
+      typeof result === 'string' ? resolve(result) : reject(new Error('read failed'));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Нормализуем ориентацию фото. Телефоны пишут EXIF Orientation: браузер учитывает
+// его при показе <img>, но сырые байты уходят на fal «как лежат» → результат боком.
+// createImageBitmap({imageOrientation:'from-image'}) отдаёт уже повёрнутые пиксели —
+// впекаем поворот в canvas и пере-кодируем (заодно ужимаем гигантские снимки).
+const MAX_DIM = 2048;
+async function normalizeImage(file: File): Promise<string> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    return fileToDataUrl(file); // HEIC/неподдерживаемый формат — отдаём как есть
+  }
+  try {
+    const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return fileToDataUrl(file);
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', 0.92);
+  } finally {
+    bitmap.close();
+  }
+}
+
 export function PhotoUploader({ value, onChange }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
   const handleFile = useCallback(
-    (file: File | null) => {
+    async (file: File | null) => {
       if (!file) return;
       if (!file.type.startsWith('image/')) {
         alert('Загрузите изображение (JPG или PNG).');
@@ -37,12 +78,11 @@ export function PhotoUploader({ value, onChange }: Props) {
         alert('Файл больше 10MB. Уменьшите размер.');
         return;
       }
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result;
-        if (typeof result === 'string') onChange(result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        onChange(await normalizeImage(file));
+      } catch {
+        alert('Не удалось обработать изображение. Попробуйте другое фото.');
+      }
     },
     [onChange],
   );
