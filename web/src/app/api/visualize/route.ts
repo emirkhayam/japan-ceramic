@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getTileById } from '@/lib/tiles';
-import { visualize, type Provider } from '@/lib/ai';
+import {
+  visualize,
+  type Grout,
+  type Orientation,
+  type Pattern,
+  type Provider,
+} from '@/lib/ai';
 import { lookupCache } from '@/lib/demo-cache';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -9,11 +15,19 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 type Body = {
-  roomImage: string;
-  tileId: string;
-  surface: 'floor' | 'wall';
-  provider?: Provider;
+  roomImage?: unknown;
+  tileId?: unknown;
+  surface?: unknown;
+  provider?: unknown;
+  pattern?: unknown;
+  orientation?: unknown;
+  grout?: unknown;
+  note?: unknown;
 };
+
+const PATTERNS: Pattern[] = ['stack', 'offset-half', 'offset-third', 'herringbone'];
+const ORIENTATIONS: Orientation[] = ['horizontal', 'vertical'];
+const GROUTS: Grout[] = ['match', 'contrast', 'minimal'];
 
 export async function POST(req: Request) {
   const user = await getSession();
@@ -32,12 +46,30 @@ export async function POST(req: Request) {
 
   let body: Body;
   try {
-    body = await req.json();
+    const parsed: unknown = await req.json();
+    body = parsed !== null && typeof parsed === 'object' ? (parsed as Body) : {};
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { roomImage, tileId, surface, provider } = body;
+  const roomImage = typeof body.roomImage === 'string' ? body.roomImage : '';
+  const tileId = typeof body.tileId === 'string' ? body.tileId : '';
+  const surface = body.surface === 'floor' || body.surface === 'wall' ? body.surface : null;
+  const provider: Provider | undefined =
+    body.provider === 'fal' || body.provider === 'mock' ? body.provider : undefined;
+  const requestedPattern = PATTERNS.includes(body.pattern as Pattern)
+    ? (body.pattern as Pattern)
+    : undefined;
+  const orientation: Orientation = ORIENTATIONS.includes(body.orientation as Orientation)
+    ? (body.orientation as Orientation)
+    : 'horizontal';
+  const grout: Grout = GROUTS.includes(body.grout as Grout)
+    ? (body.grout as Grout)
+    : 'match';
+  const note =
+    typeof body.note === 'string' && body.note.length <= 300
+      ? body.note.trim() || undefined
+      : undefined;
   if (!roomImage || !tileId || !surface) {
     return NextResponse.json(
       { error: 'roomImage, tileId, and surface are required' },
@@ -50,40 +82,60 @@ export async function POST(req: Request) {
   const origin = req.headers.get('origin') || new URL(req.url).origin;
 
   let tileName: string;
-  let tileImageUrl: string;
+  let tileImageUrls: string[];
+  let tileDimensions: string | undefined;
   let tileKey: string;
+  let isClinker: boolean;
 
   if (staticTile) {
     tileName = `${staticTile.name} (${staticTile.texture}, ${staticTile.size})`;
-    tileImageUrl = staticTile.image.startsWith('http')
-      ? staticTile.image
-      : `${origin}${staticTile.image}`;
+    tileImageUrls = [resolveImageUrl(staticTile.image, origin)];
+    tileDimensions = staticSizeToMillimeters(staticTile.size);
     tileKey = staticTile.id;
+    isClinker = staticTile.type === 'clinker';
   } else {
     // Look up in database by slug or id
     const dbProduct = await prisma.product.findFirst({
       where: { OR: [{ slug: tileId }, { id: tileId }] },
-      include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } },
+      include: {
+        category: true,
+        images: { orderBy: { sortOrder: 'asc' }, take: 4 },
+      },
     });
     if (!dbProduct) {
       return NextResponse.json({ error: `Unknown tile: ${tileId}` }, { status: 400 });
     }
     tileName = `${dbProduct.name}${dbProduct.dimensions ? ` (${dbProduct.dimensions})` : ''}`;
-    const img = dbProduct.images[0]?.imageUrl;
-    if (!img) {
+    tileImageUrls = dbProduct.images.map((image) => resolveImageUrl(image.imageUrl, origin));
+    if (tileImageUrls.length === 0) {
       return NextResponse.json({ error: 'У товара нет изображения для визуализации' }, { status: 400 });
     }
-    tileImageUrl = img.startsWith('http') ? img : `${origin}${img}`;
+    tileDimensions = dbProduct.dimensions || undefined;
     tileKey = dbProduct.slug;
+    const categoryIdentity = `${dbProduct.category.slug} ${dbProduct.category.name}`.toLowerCase();
+    isClinker = categoryIdentity.includes('clinker') || categoryIdentity.includes('клинкер');
   }
 
+  const defaultPattern: Pattern = isClinker ? 'offset-half' : 'stack';
+  const pattern = requestedPattern ?? defaultPattern;
+  const settings = { pattern, orientation, grout, note: note ?? '' };
+  const hasDefaultSettings =
+    pattern === defaultPattern &&
+    orientation === 'horizontal' &&
+    grout === 'match' &&
+    !note;
+
   const cachedProvider = provider || 'auto';
-  const cached = await lookupCache({
-    roomImage,
-    tileId: tileKey,
-    surface,
-    provider: cachedProvider,
-  });
+  // Старые демо-кэши не учитывают параметры укладки, поэтому используем их
+  // только для полностью дефолтного запроса.
+  const cached = hasDefaultSettings
+    ? await lookupCache({
+        roomImage,
+        tileId: tileKey,
+        surface,
+        provider: cachedProvider,
+      })
+    : null;
   if (cached) {
     await logVisualization({ userId: user.id, tileSlug: tileKey, tileName, surface, provider: 'cache' });
     return NextResponse.json({
@@ -91,15 +143,21 @@ export async function POST(req: Request) {
       durationMs: 0,
       provider: 'cache',
       tile: { id: tileKey, name: tileName },
+      settings,
     });
   }
 
   try {
     const result = await visualize({
       roomImageUrl: roomImage,
-      tileImageUrl,
+      tileImageUrls,
       tileName,
+      tileDimensions,
       surface,
+      pattern,
+      orientation,
+      grout,
+      note,
       provider,
     });
 
@@ -119,12 +177,25 @@ export async function POST(req: Request) {
       durationMs: result.durationMs,
       provider: result.provider,
       tile: { id: tileKey, name: tileName },
+      settings,
     });
   } catch (err) {
     console.error('[visualize]', err);
     const message = err instanceof Error ? err.message : 'Generation failed';
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function resolveImageUrl(url: string, origin: string): string {
+  if (url.startsWith('data:')) return url;
+  return new URL(url, origin).toString();
+}
+
+function staticSizeToMillimeters(size: string): string {
+  return `${size.replace(/\d+(?:[.,]\d+)?/g, (value) => {
+    const millimeters = Number(value.replace(',', '.')) * 10;
+    return String(millimeters);
+  })}mm`;
 }
 
 // Пишем лог визуализации. Ошибка лога не должна ломать ответ пользователю.
@@ -162,18 +233,8 @@ export async function GET() {
   return NextResponse.json({
     providers: {
       fal: !!process.env.FAL_KEY,
-      replicate: !!process.env.REPLICATE_API_TOKEN,
-      gemini: !!(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY),
       mock: true,
     },
-    default:
-      process.env.AI_PROVIDER ||
-      (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
-        ? 'gemini'
-        : process.env.FAL_KEY
-          ? 'fal'
-          : process.env.REPLICATE_API_TOKEN
-            ? 'replicate'
-            : 'mock'),
+    default: process.env.FAL_KEY ? 'fal' : 'mock',
   });
 }

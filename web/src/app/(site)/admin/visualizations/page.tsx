@@ -103,7 +103,7 @@ export default async function AdminVisualizationsPage() {
               />
             </div>
             {usedPct >= 90 && (
-              <p className="text-[12px] text-[var(--danger)] mt-2">Лимит почти исчерпан — пополните квоту в Google (см. ниже).</p>
+              <p className="text-[12px] text-[var(--danger)] mt-2">Лимит почти исчерпан — пополните баланс fal.ai (см. ниже).</p>
             )}
           </div>
         ) : (
@@ -121,17 +121,17 @@ export default async function AdminVisualizationsPage() {
         </summary>
         <div className="text-[13.5px] text-[var(--ink-soft)] leading-[1.7] mt-4 space-y-3">
           <p>
-            Токены для AI-визуализации — это квота <strong>Google Gemini</strong> (модель Gemini Image). Пополнение
-            происходит не в этой админке, а на стороне Google:
+            AI-визуализация использует платный API <strong>fal.ai</strong> (модель Nano Banana Pro). Пополнение
+            происходит не в этой админке, а на стороне fal.ai:
           </p>
           <ol className="list-decimal pl-5 space-y-1.5">
-            <li>Откройте <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[var(--color-gold-400)] hover:underline">Google AI Studio → API keys</a> того аккаунта, чей ключ указан в <code className="text-[var(--ink)]">GOOGLE_API_KEY</code>.</li>
-            <li>Подключите проект к биллингу в <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener" className="text-[var(--color-gold-400)] hover:underline">Google Cloud Console → Billing</a> — это снимает ограничения бесплатного tier и поднимает лимиты.</li>
-            <li>Текущие лимиты и фактический расход смотрите в <a href="https://console.cloud.google.com/apis/dashboard" target="_blank" rel="noopener" className="text-[var(--color-gold-400)] hover:underline">APIs &amp; Services → Quotas</a>.</li>
+            <li>Откройте <a href="https://fal.ai/dashboard" target="_blank" rel="noopener" className="text-[var(--color-gold-400)] hover:underline">панель fal.ai</a> того аккаунта, чей ключ указан в <code className="text-[var(--ink)]">FAL_KEY</code>.</li>
+            <li>Пополните баланс или настройте биллинг в разделе Billing.</li>
+            <li>Фактический расход и историю запросов смотрите в разделе Usage.</li>
             <li>После изменения квот обновите при необходимости месячный лимит выше — он влияет только на отображение «остатка» здесь.</li>
           </ol>
           <p className="text-[12px] text-[var(--ink-faint)]">
-            Бесплатный tier Gemini имеет суточные/минутные лимиты запросов. При их превышении визуализатор вернёт ошибку — это сигнал поднять квоту.
+            Nano Banana Pro тарифицируется за каждое изображение; при исчерпании баланса визуализатор вернёт ошибку.
           </p>
         </div>
       </details>

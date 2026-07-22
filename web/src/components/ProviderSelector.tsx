@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { cn } from '@/lib/cn';
 import { Sparkles, Check, Lock } from 'lucide-react';
 
-type Provider = 'fal' | 'replicate' | 'gemini' | 'mock';
+type Provider = 'fal' | 'mock';
 
 type ProvidersStatus = {
   providers: Record<Provider, boolean>;
@@ -12,9 +12,10 @@ type ProvidersStatus = {
 };
 
 const META: Record<Provider, { label: string; price: string; badge?: string }> = {
-  gemini: { label: 'Google Gemini 2.5', price: 'Бесплатно (free tier)', badge: 'FREE' },
-  fal: { label: 'fal.ai · FLUX Kontext', price: '~$0.04 / картинка' },
-  replicate: { label: 'Replicate · FLUX', price: '~$0.04 / картинка' },
+  fal: {
+    label: 'fal.ai · Nano Banana Pro (Gemini 3 Pro Image)',
+    price: '≈13,12 сом / картинка',
+  },
   mock: { label: 'Демо (без AI)', price: 'Возвращает картинку плитки' },
 };
 
@@ -53,7 +54,7 @@ export function ProviderSelector({ value, onChange }: Props) {
         {(Object.keys(META) as Provider[]).map((p) => {
           const isConfigured = status?.providers[p] ?? false;
           const isSelected = value === p;
-          const isFree = p === 'gemini' || p === 'mock';
+          const isFree = p === 'mock';
           return (
             <button
               key={p}

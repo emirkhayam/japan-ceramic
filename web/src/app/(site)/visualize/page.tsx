@@ -5,7 +5,18 @@ import { useSearchParams } from 'next/navigation';
 import { PhotoUploader } from '@/components/PhotoUploader';
 import { CatalogTileSelector, type CatalogTile } from '@/components/CatalogTileSelector';
 import { VisualizerLoader } from '@/components/VisualizerLoader';
-import { Sparkles, Download, MessageCircle, ArrowLeft, AlertCircle, RotateCcw, Camera, Check } from 'lucide-react';
+import {
+  Sparkles,
+  Download,
+  MessageCircle,
+  ArrowLeft,
+  AlertCircle,
+  RotateCcw,
+  Camera,
+  Check,
+  RefreshCw,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 // Локальный (client-safe) аналог waHref — не импортируем из lib/settings,
@@ -17,6 +28,40 @@ function waLink(wa: string | null | undefined): string | null {
 
 type Surface = 'floor' | 'wall';
 type Stage = 'idle' | 'generating' | 'result' | 'error';
+type Pattern = 'stack' | 'offset-half' | 'offset-third' | 'herringbone';
+type Orientation = 'horizontal' | 'vertical';
+type Grout = 'match' | 'contrast' | 'minimal';
+type RefinementSettings = {
+  pattern: Pattern;
+  orientation: Orientation;
+  grout: Grout;
+  note: string;
+};
+
+const DEFAULT_REFINEMENT_SETTINGS: RefinementSettings = {
+  pattern: 'stack',
+  orientation: 'horizontal',
+  grout: 'match',
+  note: '',
+};
+
+const PATTERN_OPTIONS: { value: Pattern; label: string }[] = [
+  { value: 'stack', label: 'Стек' },
+  { value: 'offset-half', label: 'Вразбежку ½' },
+  { value: 'offset-third', label: 'Вразбежку ⅓' },
+  { value: 'herringbone', label: 'Ёлочка' },
+];
+
+const ORIENTATION_OPTIONS: { value: Orientation; label: string }[] = [
+  { value: 'horizontal', label: 'Горизонтально' },
+  { value: 'vertical', label: 'Вертикально' },
+];
+
+const GROUT_OPTIONS: { value: Grout; label: string }[] = [
+  { value: 'match', label: 'В тон' },
+  { value: 'contrast', label: 'Контраст' },
+  { value: 'minimal', label: 'Мин. шов' },
+];
 
 function VisualizePageInner() {
   const params = useSearchParams();
@@ -30,6 +75,10 @@ function VisualizePageInner() {
   const [resultMeta, setResultMeta] = useState<{ provider: string; durationMs: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [contacts, setContacts] = useState<{ whatsapp: string | null; mapLink: string | null; address: string | null } | null>(null);
+  const [pattern, setPattern] = useState<Pattern>(DEFAULT_REFINEMENT_SETTINGS.pattern);
+  const [orientation, setOrientation] = useState<Orientation>(DEFAULT_REFINEMENT_SETTINGS.orientation);
+  const [grout, setGrout] = useState<Grout>(DEFAULT_REFINEMENT_SETTINGS.grout);
+  const [note, setNote] = useState(DEFAULT_REFINEMENT_SETTINGS.note);
 
   // Pre-select tile from URL param
   useEffect(() => {
@@ -53,7 +102,7 @@ function VisualizePageInner() {
 
   const canGenerate = photo && selectedTile && stage !== 'generating';
 
-  async function generateFor(tile: CatalogTile) {
+  async function generateFor(tile: CatalogTile, refinements?: RefinementSettings) {
     if (!photo) return;
     setStage('generating');
     setErrorMsg(null);
@@ -65,6 +114,7 @@ function VisualizePageInner() {
           roomImage: photo,
           tileId: tile.slug,
           surface,
+          ...refinements,
         }),
       });
       if (!res.ok) {
@@ -74,6 +124,12 @@ function VisualizePageInner() {
       const data = await res.json();
       setResultUrl(data.imageUrl);
       setResultMeta({ provider: data.provider, durationMs: data.durationMs });
+      if (data.settings) {
+        setPattern(data.settings.pattern);
+        setOrientation(data.settings.orientation);
+        setGrout(data.settings.grout);
+        setNote(data.settings.note);
+      }
       setStage('result');
     } catch (err) {
       console.error(err);
@@ -90,12 +146,22 @@ function VisualizePageInner() {
   function handleReset() {
     setStage('idle');
     setResultUrl(null);
+    setResultMeta(null);
     setErrorMsg(null);
+    setPattern(DEFAULT_REFINEMENT_SETTINGS.pattern);
+    setOrientation(DEFAULT_REFINEMENT_SETTINGS.orientation);
+    setGrout(DEFAULT_REFINEMENT_SETTINGS.grout);
+    setNote(DEFAULT_REFINEMENT_SETTINGS.note);
   }
 
   function handleSwapTile(tile: CatalogTile) {
     setSelectedTile(tile);
-    generateFor(tile);
+    generateFor(tile, { pattern, orientation, grout, note });
+  }
+
+  function handleRefine() {
+    if (!selectedTile) return;
+    generateFor(selectedTile, { pattern, orientation, grout, note });
   }
 
   if (stage === 'generating') {
@@ -186,6 +252,100 @@ function VisualizePageInner() {
                     </a>
                   );
                 })()}
+              </div>
+            </div>
+
+            <div className="card p-5">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-mist-400">
+                <SlidersHorizontal size={14} className="text-gold-400" /> Уточнить
+              </div>
+
+              <div className="mt-4 space-y-4">
+                <div>
+                  <div className="mb-2 text-xs font-medium text-mist-300">Схема укладки</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PATTERN_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setPattern(option.value)}
+                        className={cn(
+                          'rounded-lg border px-2.5 py-2 text-xs font-medium transition cursor-pointer',
+                          pattern === option.value
+                            ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                            : 'border-white/10 text-mist-400 hover:border-white/30',
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-medium text-mist-300">Ориентация</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ORIENTATION_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setOrientation(option.value)}
+                        className={cn(
+                          'rounded-lg border px-2.5 py-2 text-xs font-medium transition cursor-pointer',
+                          orientation === option.value
+                            ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                            : 'border-white/10 text-mist-400 hover:border-white/30',
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-medium text-mist-300">Затирка</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {GROUT_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setGrout(option.value)}
+                        className={cn(
+                          'rounded-lg border px-2 py-2 text-xs font-medium transition cursor-pointer',
+                          grout === option.value
+                            ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                            : 'border-white/10 text-mist-400 hover:border-white/30',
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-medium text-mist-300">Что поправить?</span>
+                  <textarea
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    maxLength={300}
+                    rows={3}
+                    placeholder="например: сделай швы тоньше"
+                    className="w-full resize-y rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm text-mist-100 outline-none transition placeholder:text-mist-500 focus:border-gold-500/70"
+                  />
+                  <span className="mt-1 block text-right text-[10px] text-mist-500">
+                    {note.length}/300
+                  </span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleRefine}
+                  className="btn-gold w-full !px-4 !py-3 text-sm"
+                >
+                  <RefreshCw size={15} /> Перегенерировать
+                </button>
               </div>
             </div>
 
