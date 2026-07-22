@@ -37,24 +37,6 @@ export type VisualizeResult = {
   usage?: TokenUsage;
 };
 
-export const PROVIDERS_META: Record<
-  Provider,
-  { label: string; price: string; free: boolean; envVar: string }
-> = {
-  fal: {
-    label: 'fal.ai · Nano Banana Pro (Gemini 3 Pro Image)',
-    price: '≈13,12 сом / картинка',
-    free: false,
-    envVar: 'FAL_KEY',
-  },
-  mock: {
-    label: 'Демо (без живого AI)',
-    price: 'Бесплатно',
-    free: true,
-    envVar: '',
-  },
-};
-
 function pickProvider(requested?: Provider): Provider {
   if (requested === 'fal' || requested === 'mock') return requested;
   const fromEnv = process.env.AI_PROVIDER;

@@ -67,9 +67,7 @@ export async function POST(req: Request) {
     ? (body.grout as Grout)
     : 'match';
   const note =
-    typeof body.note === 'string' && body.note.length <= 300
-      ? body.note.trim() || undefined
-      : undefined;
+    typeof body.note === 'string' ? body.note.trim().slice(0, 300) || undefined : undefined;
   if (!roomImage || !tileId || !surface) {
     return NextResponse.json(
       { error: 'roomImage, tileId, and surface are required' },
@@ -77,8 +75,18 @@ export async function POST(req: Request) {
     );
   }
 
-  // Try static tiles first, then database products
-  const staticTile = getTileById(tileId);
+  const budgetResponse = await checkMonthlyGenerationBudget();
+  if (budgetResponse) return budgetResponse;
+
+  // Товар из БД приоритетнее статической плитки с совпадающим id/slug.
+  const dbProduct = await prisma.product.findFirst({
+    where: { OR: [{ slug: tileId }, { id: tileId }] },
+    include: {
+      category: true,
+      images: { orderBy: { sortOrder: 'asc' }, take: 4 },
+    },
+  });
+  const staticTile = dbProduct ? undefined : getTileById(tileId);
   const origin = req.headers.get('origin') || new URL(req.url).origin;
 
   let tileName: string;
@@ -87,33 +95,25 @@ export async function POST(req: Request) {
   let tileKey: string;
   let isClinker: boolean;
 
-  if (staticTile) {
+  if (dbProduct) {
+    const normalizedDimensions = normalizeTileDimensions(dbProduct.dimensions);
+    tileName = `${dbProduct.name}${normalizedDimensions ? ` (${normalizedDimensions})` : ''}`;
+    tileImageUrls = dbProduct.images.map((image) => resolveImageUrl(image.imageUrl, origin));
+    if (tileImageUrls.length === 0) {
+      return NextResponse.json({ error: 'У товара нет изображения для визуализации' }, { status: 400 });
+    }
+    tileDimensions = normalizedDimensions;
+    tileKey = dbProduct.slug;
+    const categoryIdentity = `${dbProduct.category.slug} ${dbProduct.category.name}`.toLowerCase();
+    isClinker = categoryIdentity.includes('clinker') || categoryIdentity.includes('клинкер');
+  } else if (staticTile) {
     tileName = `${staticTile.name} (${staticTile.texture}, ${staticTile.size})`;
     tileImageUrls = [resolveImageUrl(staticTile.image, origin)];
     tileDimensions = staticSizeToMillimeters(staticTile.size);
     tileKey = staticTile.id;
     isClinker = staticTile.type === 'clinker';
   } else {
-    // Look up in database by slug or id
-    const dbProduct = await prisma.product.findFirst({
-      where: { OR: [{ slug: tileId }, { id: tileId }] },
-      include: {
-        category: true,
-        images: { orderBy: { sortOrder: 'asc' }, take: 4 },
-      },
-    });
-    if (!dbProduct) {
-      return NextResponse.json({ error: `Unknown tile: ${tileId}` }, { status: 400 });
-    }
-    tileName = `${dbProduct.name}${dbProduct.dimensions ? ` (${dbProduct.dimensions})` : ''}`;
-    tileImageUrls = dbProduct.images.map((image) => resolveImageUrl(image.imageUrl, origin));
-    if (tileImageUrls.length === 0) {
-      return NextResponse.json({ error: 'У товара нет изображения для визуализации' }, { status: 400 });
-    }
-    tileDimensions = dbProduct.dimensions || undefined;
-    tileKey = dbProduct.slug;
-    const categoryIdentity = `${dbProduct.category.slug} ${dbProduct.category.name}`.toLowerCase();
-    isClinker = categoryIdentity.includes('clinker') || categoryIdentity.includes('клинкер');
+    return NextResponse.json({ error: `Unknown tile: ${tileId}` }, { status: 400 });
   }
 
   const defaultPattern: Pattern = isClinker ? 'offset-half' : 'stack';
@@ -125,6 +125,7 @@ export async function POST(req: Request) {
     grout === 'match' &&
     !note;
 
+  // Демо-кэш сидится строго под сентинелом 'auto', а не под фактическим провайдером по умолчанию.
   const cachedProvider = provider || 'auto';
   // Старые демо-кэши не учитывают параметры укладки, поэтому используем их
   // только для полностью дефолтного запроса.
@@ -198,6 +199,35 @@ function staticSizeToMillimeters(size: string): string {
   })}mm`;
 }
 
+function normalizeTileDimensions(dimensions: string | null): string | undefined {
+  const [width, height] = dimensions?.match(/\d+(?:[.,]\d+)?/g) ?? [];
+  if (!width || !height) return undefined;
+  return `${width.replace(',', '.')}×${height.replace(',', '.')} mm`;
+}
+
+async function checkMonthlyGenerationBudget(): Promise<NextResponse | null> {
+  const settings = await prisma.siteSettings.findUnique({
+    where: { id: 'default' },
+    select: { aiTokenBudget: true },
+  });
+  const budget = settings?.aiTokenBudget;
+
+  // Значения больше 1000 относятся к старому токенному масштабу и лимитом генераций не считаются.
+  if (budget == null || budget < 1 || budget > 1000) return null;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthCount = await prisma.visualizationLog.count({
+    where: { createdAt: { gte: monthStart } },
+  });
+
+  if (monthCount < budget) return null;
+  return NextResponse.json(
+    { error: 'Месячный лимит AI-генераций исчерпан. Обратитесь к администратору.' },
+    { status: 429 },
+  );
+}
+
 // Пишем лог визуализации. Ошибка лога не должна ломать ответ пользователю.
 async function logVisualization(data: {
   userId: string;
@@ -226,15 +256,4 @@ async function logVisualization(data: {
   } catch (err) {
     console.error('[visualize] не удалось записать лог:', err);
   }
-}
-
-export async function GET() {
-  // Возвращаем список провайдеров и какие из них настроены (имеется ключ)
-  return NextResponse.json({
-    providers: {
-      fal: !!process.env.FAL_KEY,
-      mock: true,
-    },
-    default: process.env.FAL_KEY ? 'fal' : 'mock',
-  });
 }

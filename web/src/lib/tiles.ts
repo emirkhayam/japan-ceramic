@@ -16,12 +16,8 @@ export type Tile = {
   texturePreview?: string;
 };
 
-export const tiles = tilesData as Tile[];
+const tiles = tilesData as Tile[];
 
 export function getTileById(id: string): Tile | undefined {
   return tiles.find((t) => t.id === id);
-}
-
-export function formatPrice(price: number): string {
-  return new Intl.NumberFormat('ru-RU').format(price) + ' сом/м²';
 }

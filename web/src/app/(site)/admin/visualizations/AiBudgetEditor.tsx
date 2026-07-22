@@ -31,16 +31,17 @@ export default function AiBudgetEditor({ initial }: { initial: number | null }) 
     <div className="flex flex-wrap items-end gap-3">
       <div>
         <label htmlFor="ai-budget" className="block text-[11px] tracking-[.08em] uppercase text-[var(--ink-mute)] mb-2">
-          Месячный лимит токенов
+          Месячный лимит генераций
         </label>
         <input
           id="ai-budget"
           type="number"
-          min={0}
+          min={1}
+          max={1000}
           inputMode="numeric"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="напр. 1000000 (пусто = без лимита)"
+          placeholder="напр. 200 (пусто = без лимита)"
           className="w-[260px] px-4 py-2.5 bg-[var(--surface-1)] border border-[var(--line-2)] rounded-sm text-[var(--ink)] text-sm outline-none focus:border-[rgba(255,255,255,.34)] transition-all placeholder:text-[var(--ink-faint)]"
         />
       </div>
