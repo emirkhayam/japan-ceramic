@@ -8,7 +8,7 @@ export const maxDuration = 60;
 
 // Структурно-зафиксированная ИИ-доводка: берёт точный композит (плитка уже в правильном
 // размере/перспективе) + маску + карту сетки → фотореализм через ControlNet, НЕ меняя
-// раскладку. Требует FAL_KEY/REPLICATE_API_TOKEN; без них возвращает композит как есть.
+// раскладку. Требует FAL_KEY; без него возвращает композит как есть.
 export async function POST(req: Request) {
   const user = await getSession();
   if (!user) {

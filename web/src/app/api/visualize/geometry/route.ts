@@ -5,8 +5,8 @@ import { analyzeSurfacePlane } from '@/lib/ai';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-// Анализ геометрии плоскости (Gemini-vision): 4 угла стены/пола + реальные размеры.
-// Нужен детерминированному перспективному рендеру — модель НЕ рисует пиксели.
+// Детерминированная геометрия плоскости: 4 угла стены/пола + безопасная оценка размеров.
+// Нужна локальному перспективному рендеру и не вызывает удалённый AI-провайдер.
 export async function POST(req: Request) {
   const user = await getSession();
   if (!user) {

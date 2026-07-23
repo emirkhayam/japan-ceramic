@@ -1,28 +1,40 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { PhotoUploader } from '@/components/PhotoUploader';
-import { MaskCanvas, type MaskCanvasHandle } from '@/components/MaskCanvas';
+import {
+  AlertCircle,
+  ArrowLeft,
+  Brush,
+  Camera,
+  Check,
+  Download,
+  Layers,
+  MessageCircle,
+  RefreshCw,
+  RotateCcw,
+  SlidersHorizontal,
+  Sparkles,
+} from 'lucide-react';
 import { CatalogTileSelector, type CatalogTile } from '@/components/CatalogTileSelector';
+import { MaskCanvas, type MaskCanvasHandle } from '@/components/MaskCanvas';
+import { PhotoUploader } from '@/components/PhotoUploader';
 import { VisualizerLoader } from '@/components/VisualizerLoader';
-import { Sparkles, Download, MessageCircle, ArrowLeft, AlertCircle, RotateCcw, Camera, Check, Brush, Layers } from 'lucide-react';
+import type { FacadeBaseColor, FacadeZone, Surface } from '@/lib/ai';
 import { cn } from '@/lib/cn';
 
-// Локальный (client-safe) аналог waHref — не импортируем из lib/settings,
-// т.к. тот модуль тянет prisma (server-only).
-function waLink(wa: string | null | undefined): string | null {
-  if (!wa) return null;
-  return wa.startsWith("http") ? wa : `https://wa.me/${wa.replace(/[^\d]/g, "")}`;
+function waLink(whatsapp: string | null | undefined): string | null {
+  if (!whatsapp) return null;
+  return whatsapp.startsWith('http')
+    ? whatsapp
+    : `https://wa.me/${whatsapp.replace(/[^\d]/g, '')}`;
 }
 
-// Парсит положительное число из строки поля (запятая → точка); иначе undefined.
-function parsePositive(s: string): number | undefined {
-  const n = parseFloat(s.replace(",", "."));
-  return Number.isFinite(n) && n > 0 ? n : undefined;
+function parsePositive(value: string): number | undefined {
+  const number = Number.parseFloat(value.replace(',', '.'));
+  return Number.isFinite(number) && number > 0 ? number : undefined;
 }
 
-// Технические ошибки сети → понятный текст с намёком повторить.
 function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   if (/fetch failed|timeout|ETIMEDOUT|ECONN|network|502|503|504|UND_ERR/i.test(raw)) {
@@ -31,13 +43,66 @@ function friendlyError(err: unknown): string {
   return raw || 'Неизвестная ошибка';
 }
 
-type Mode = 'floor' | 'wall' | 'mask';
 type Stage = 'idle' | 'generating' | 'result' | 'error';
+type Pattern = 'stack' | 'offset-half' | 'offset-third' | 'herringbone';
+type Orientation = 'horizontal' | 'vertical';
+type Grout = 'match' | 'contrast' | 'minimal';
+type RefinementSettings = {
+  pattern: Pattern;
+  orientation: Orientation;
+  grout: Grout;
+  zones: FacadeZone[];
+  baseColor: FacadeBaseColor;
+  note: string;
+};
 
-const MODES: { id: Mode; label: string }[] = [
+const DEFAULT_REFINEMENT_SETTINGS: RefinementSettings = {
+  pattern: 'stack',
+  orientation: 'horizontal',
+  grout: 'match',
+  zones: ['full'],
+  baseColor: 'white',
+  note: '',
+};
+
+const MODES: { id: Surface; label: string }[] = [
   { id: 'mask', label: 'Выделить кистью' },
   { id: 'floor', label: 'Пол' },
   { id: 'wall', label: 'Стена' },
+  { id: 'facade', label: 'Фасад' },
+];
+
+const FACADE_ZONE_OPTIONS: { value: FacadeZone; label: string }[] = [
+  { value: 'full', label: 'Весь фасад' },
+  { value: 'between-windows', label: 'Между окнами' },
+  { value: 'around-windows', label: 'Вокруг окон' },
+  { value: 'corners', label: 'Углы' },
+  { value: 'plinth', label: 'Цоколь' },
+  { value: 'columns', label: 'Колонны/тумбы' },
+];
+
+const FACADE_BASE_COLOR_OPTIONS: { value: FacadeBaseColor; label: string }[] = [
+  { value: 'white', label: 'Белый' },
+  { value: 'beige', label: 'Бежевый' },
+  { value: 'grey', label: 'Серый' },
+];
+
+const PATTERN_OPTIONS: { value: Pattern; label: string }[] = [
+  { value: 'stack', label: 'Стек' },
+  { value: 'offset-half', label: 'Вразбежку ½' },
+  { value: 'offset-third', label: 'Вразбежку ⅓' },
+  { value: 'herringbone', label: 'Ёлочка' },
+];
+
+const ORIENTATION_OPTIONS: { value: Orientation; label: string }[] = [
+  { value: 'horizontal', label: 'Горизонтально' },
+  { value: 'vertical', label: 'Вертикально' },
+];
+
+const GROUT_OPTIONS: { value: Grout; label: string }[] = [
+  { value: 'match', label: 'В тон' },
+  { value: 'contrast', label: 'Контраст' },
+  { value: 'minimal', label: 'Мин. шов' },
 ];
 
 function VisualizePageInner() {
@@ -45,41 +110,55 @@ function VisualizePageInner() {
   const initialSlug = params.get('tile');
 
   const [photo, setPhoto] = useState<string | null>(null);
-  // Исходное загруженное фото (до «Добавить ещё плитку», которое наслаивает результат).
-  // Нужно, чтобы смена плитки рендерилась от оригинала, а не от наслоённой картинки.
   const originalPhotoRef = useRef<string | null>(null);
   const [selectedTile, setSelectedTile] = useState<CatalogTile | null>(null);
-  const [mode, setMode] = useState<Mode>('mask');
-  // Реальные размеры поверхности (опционально) — чтобы ИИ положил плитку в верном масштабе.
+  const [mode, setMode] = useState<Surface>('mask');
   const [widthM, setWidthM] = useState('');
   const [heightM, setHeightM] = useState('');
   const [areaM2, setAreaM2] = useState('');
-  // Сколько плиток уже наложено на разные участки (для пошаговой облицовки).
   const [layerCount, setLayerCount] = useState(1);
   const [maskHasStrokes, setMaskHasStrokes] = useState(false);
   const maskRef = useRef<MaskCanvasHandle>(null);
-  // Маска последней генерации — чтобы «Попробуйте другую» на экране результата
-  // (где холст уже размонтирован) могла повторить запрос с той же областью.
   const lastMaskRef = useRef<string | null>(null);
   const [stage, setStage] = useState<Stage>('idle');
   const [resultUrl, setResultUrl] = useState<string | null>(null);
-  const [resultMeta, setResultMeta] = useState<{ provider: string; durationMs: number } | null>(null);
+  const [resultMeta, setResultMeta] = useState<{
+    provider: string;
+    durationMs: number;
+  } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [contacts, setContacts] = useState<{ whatsapp: string | null; mapLink: string | null; address: string | null } | null>(null);
-  // Товары грузим ОДИН раз здесь (в родителе) и передаём в селекторы пропом —
-  // тогда «Добавить ещё плитку» (перемонтирование селектора) не теряет список.
+  const [contacts, setContacts] = useState<{
+    whatsapp: string | null;
+    mapLink: string | null;
+    address: string | null;
+  } | null>(null);
   const [allTiles, setAllTiles] = useState<CatalogTile[]>([]);
   const [tilesLoading, setTilesLoading] = useState(true);
+  const [pattern, setPattern] = useState<Pattern>(DEFAULT_REFINEMENT_SETTINGS.pattern);
+  const [orientation, setOrientation] = useState<Orientation>(
+    DEFAULT_REFINEMENT_SETTINGS.orientation,
+  );
+  const [grout, setGrout] = useState<Grout>(DEFAULT_REFINEMENT_SETTINGS.grout);
+  const [zones, setZones] = useState<FacadeZone[]>(DEFAULT_REFINEMENT_SETTINGS.zones);
+  const [baseColor, setBaseColor] = useState<FacadeBaseColor>(
+    DEFAULT_REFINEMENT_SETTINGS.baseColor,
+  );
+  const [note, setNote] = useState(DEFAULT_REFINEMENT_SETTINGS.note);
+  const [settingsInitialized, setSettingsInitialized] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/catalog/products")
-      .then((r) => r.json())
+    fetch('/api/catalog/products')
+      .then((response) => response.json())
       .then((data) => {
-        if (alive) {
-          setAllTiles(Array.isArray(data?.products) ? data.products : []);
-          setTilesLoading(false);
+        if (!alive) return;
+        const products: CatalogTile[] = Array.isArray(data?.products) ? data.products : [];
+        setAllTiles(products);
+        if (initialSlug) {
+          const initialTile = products.find((product) => product.slug === initialSlug);
+          if (initialTile) setSelectedTile(initialTile);
         }
+        setTilesLoading(false);
       })
       .catch(() => {
         if (alive) setTilesLoading(false);
@@ -87,31 +166,23 @@ function VisualizePageInner() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [initialSlug]);
 
-  // Pre-select tile from URL param — из уже загруженного списка.
   useEffect(() => {
-    if (!initialSlug || allTiles.length === 0) return;
-    const found = allTiles.find((p) => p.slug === initialSlug);
-    if (found) setSelectedTile(found);
-  }, [initialSlug, allTiles]);
-
-  // Контакты сайта (WhatsApp/адрес/2ГИС) — из настроек, а не хардкод.
-  useEffect(() => {
-    fetch("/api/site-contacts")
-      .then((r) => r.json())
+    fetch('/api/site-contacts')
+      .then((response) => response.json())
       .then((data) => setContacts(data.settings))
       .catch(() => {});
   }, []);
 
   const maskReady = mode !== 'mask' || maskHasStrokes;
-  const canGenerate = photo && selectedTile && maskReady && stage !== 'generating';
+  const canGenerate = Boolean(
+    photo && selectedTile && maskReady && stage !== 'generating',
+  );
 
-  // Авто-сохранение результата в «Мои визуализации» (личный кабинет). Один раз на результат.
   const savedUrlRef = useRef<string | null>(null);
   useEffect(() => {
-    if (stage !== 'result' || !resultUrl) return;
-    if (savedUrlRef.current === resultUrl) return;
+    if (stage !== 'result' || !resultUrl || savedUrlRef.current === resultUrl) return;
     savedUrlRef.current = resultUrl;
     fetch('/api/visualize/save', {
       method: 'POST',
@@ -125,30 +196,64 @@ function VisualizePageInner() {
     }).catch(() => {});
   }, [stage, resultUrl, selectedTile, mode]);
 
-  // Опрос статуса асинхронного рендера до готовности (или ошибки/таймаута).
   async function pollVisualization(requestId: string): Promise<string> {
-    const deadline = Date.now() + 4 * 60 * 1000; // ждём максимум 4 минуты
+    const deadline = Date.now() + 4 * 60 * 1000;
     while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 3000));
-      const res = await fetch(`/api/visualize/status?requestId=${encodeURIComponent(requestId)}`);
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || `Сервер вернул ${res.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const response = await fetch(
+        `/api/visualize/status?requestId=${encodeURIComponent(requestId)}`,
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Сервер вернул ${response.status}`);
       }
-      const data = await res.json();
-      if (data.status === 'completed' && data.imageUrl) return data.imageUrl as string;
-      if (data.status === 'failed') throw new Error(data.error || 'Генерация не удалась');
-      // data.status === 'in_progress' → продолжаем опрос
+      const data = await response.json();
+      if (data.status === 'completed' && data.imageUrl) {
+        return data.imageUrl as string;
+      }
+      if (data.status === 'failed') {
+        throw new Error(data.error || 'Генерация не удалась');
+      }
     }
     throw new Error('Превышено время ожидания генерации');
   }
 
-  // Генерация через gpt-image-1 (сервер): модель сама распознаёт сцену, перспективу,
-  // окна/двери и накладывает плитку реалистично. Для режима кисти добавляем маску.
-  // roomOverride — рендерить от конкретного фото (для «смены плитки» это ОРИГИНАЛ,
-  // а не наслоённый результат). Без него берём текущее photo.
-  async function generateFor(tile: CatalogTile, roomOverride?: string) {
-    const roomImage = roomOverride ?? photo;
+  function currentRefinements(): RefinementSettings {
+    return { pattern, orientation, grout, zones, baseColor, note };
+  }
+
+  function syncSettings(settings: unknown) {
+    if (!settings || typeof settings !== 'object') return;
+    const data = settings as Partial<RefinementSettings>;
+    if (PATTERN_OPTIONS.some((option) => option.value === data.pattern)) {
+      setPattern(data.pattern as Pattern);
+    }
+    if (ORIENTATION_OPTIONS.some((option) => option.value === data.orientation)) {
+      setOrientation(data.orientation as Orientation);
+    }
+    if (GROUT_OPTIONS.some((option) => option.value === data.grout)) {
+      setGrout(data.grout as Grout);
+    }
+    if (Array.isArray(data.zones) && data.zones.length > 0) {
+      setZones(data.zones);
+    }
+    if (
+      FACADE_BASE_COLOR_OPTIONS.some((option) => option.value === data.baseColor)
+    ) {
+      setBaseColor(data.baseColor as FacadeBaseColor);
+    }
+    setNote(typeof data.note === 'string' ? data.note : '');
+    setSettingsInitialized(true);
+  }
+
+  async function generateFor(
+    tile: CatalogTile,
+    options?: {
+      roomOverride?: string;
+      refinements?: RefinementSettings;
+    },
+  ) {
+    const roomImage = options?.roomOverride ?? photo;
     if (!roomImage) return;
 
     let maskImage: string | undefined;
@@ -162,10 +267,12 @@ function VisualizePageInner() {
       lastMaskRef.current = maskImage;
     }
 
+    const refinements =
+      options?.refinements ?? (settingsInitialized ? currentRefinements() : undefined);
     setStage('generating');
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/visualize', {
+      const response = await fetch('/api/visualize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -173,47 +280,64 @@ function VisualizePageInner() {
           tileId: tile.slug,
           surface: mode,
           maskImage,
-          // Реальные размеры поверхности (если введены) — для точного масштаба плитки.
           regionWidthM: mode === 'floor' ? undefined : parsePositive(widthM),
           regionHeightM: mode === 'floor' ? undefined : parsePositive(heightM),
           floorAreaM2: mode === 'floor' ? parsePositive(areaM2) : undefined,
+          pattern: refinements?.pattern,
+          orientation: refinements?.orientation,
+          grout: refinements?.grout,
+          note: refinements?.note,
+          ...(mode === 'facade'
+            ? {
+                zones: refinements?.zones ?? zones,
+                baseColor: refinements?.baseColor ?? baseColor,
+              }
+            : {}),
         }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Сервер вернул ${res.status}`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Сервер вернул ${response.status}`);
       }
-      const data = await res.json();
-      // Асинхронный путь (gpt-image-1 через очередь fal): сервер вернул requestId, рендер
-      // идёт в фоне — опрашиваем статус, пока не будет готовой картинки. Так длинный рендер
-      // (~60-90с) не упирается в таймаут прокси.
+
+      const data = await response.json();
+      syncSettings(data.settings);
       if (data.async && data.requestId) {
         const startedAt = Date.now();
         let imageUrl = await pollVisualization(data.requestId);
-        // gpt-image-1 не умеет нативную маску и перекладывает весь фасад. В режиме
-        // выделения детерминированно обрезаем результат по маске (вне зоны — оригинал,
-        // окна/двери внутри зоны исключаются) на сервере.
         if (mode === 'mask' && maskImage) {
-          const cmp = await fetch('/api/visualize/composite', {
+          const compositeResponse = await fetch('/api/visualize/composite', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ resultUrl: imageUrl, roomImage, maskImage, segRequestId: data.segRequestId ?? null }),
+            body: JSON.stringify({
+              resultUrl: imageUrl,
+              roomImage,
+              maskImage,
+              segRequestId: data.segRequestId ?? null,
+            }),
           });
-          if (!cmp.ok) {
-            const d = await cmp.json().catch(() => ({}));
-            throw new Error(d.error || `Сервер вернул ${cmp.status}`);
+          if (!compositeResponse.ok) {
+            const compositeData = await compositeResponse.json().catch(() => ({}));
+            throw new Error(
+              compositeData.error || `Сервер вернул ${compositeResponse.status}`,
+            );
           }
-          const cmpData = await cmp.json();
-          imageUrl = cmpData.imageUrl;
+          const compositeData = await compositeResponse.json();
+          imageUrl = compositeData.imageUrl;
         }
         setResultUrl(imageUrl);
-        setResultMeta({ provider: data.provider, durationMs: Date.now() - startedAt });
-        setStage('result');
+        setResultMeta({
+          provider: data.provider,
+          durationMs: Date.now() - startedAt,
+        });
       } else {
         setResultUrl(data.imageUrl);
-        setResultMeta({ provider: data.provider, durationMs: data.durationMs });
-        setStage('result');
+        setResultMeta({
+          provider: data.provider,
+          durationMs: data.durationMs,
+        });
       }
+      setStage('result');
     } catch (err) {
       console.error(err);
       setErrorMsg(friendlyError(err));
@@ -223,46 +347,99 @@ function VisualizePageInner() {
 
   function handleGenerate() {
     if (!selectedTile || !photo) return;
-    generateFor(selectedTile);
+    void generateFor(selectedTile);
   }
 
   function handleReset() {
     setStage('idle');
     setResultUrl(null);
+    setResultMeta(null);
     setErrorMsg(null);
+    if (stage === 'result' && mode === 'mask') {
+      setMaskHasStrokes(false);
+      lastMaskRef.current = null;
+    }
+    // Фото, плитка, режим и постоянные настройки сохраняются; note одноразовый.
+    setNote(DEFAULT_REFINEMENT_SETTINGS.note);
   }
 
-  // Берём текущий результат как базу для следующего слоя — так комбинируем
-  // несколько клинкеров по очереди (выделил участок → плитка → генерация → повтор).
+  function handleModeChange(nextMode: Surface) {
+    if (nextMode === mode) return;
+    if (nextMode === 'mask' || mode === 'mask') {
+      setMaskHasStrokes(false);
+      lastMaskRef.current = null;
+    }
+    setMode(nextMode);
+  }
+
   function handleContinue() {
     if (!resultUrl) return;
     setPhoto(resultUrl);
-    setLayerCount((n) => n + 1); // новый участок поверх текущего результата
+    setLayerCount((count) => count + 1);
     setMode('mask');
     setMaskHasStrokes(false);
     lastMaskRef.current = null;
     maskRef.current?.clear();
     setResultUrl(null);
+    setResultMeta(null);
     setErrorMsg(null);
+    setNote('');
     setStage('idle');
   }
 
-  // Смена плитки на экране результата: рендерим ОТ ИСХОДНОГО фото (а не от наслоённого
-  // результата) — чтобы выбранная плитка легла на весь фасад, а не «осталась прошлая».
-  async function handleSwapTile(tile: CatalogTile) {
-    const orig = originalPhotoRef.current ?? photo;
+  function handleSwapTile(tile: CatalogTile) {
+    const originalPhoto = originalPhotoRef.current ?? photo;
     setSelectedTile(tile);
-    if (orig) setPhoto(orig);
-    setLayerCount(1); // свап = заново на весь фасад, слои сбрасываются
-    generateFor(tile, orig ?? undefined);
+    if (originalPhoto) setPhoto(originalPhoto);
+    setLayerCount(1);
+    void generateFor(tile, {
+      roomOverride: originalPhoto ?? undefined,
+      refinements: currentRefinements(),
+    });
   }
 
-  // Загрузка фото: запоминаем оригинал для «смены плитки», сбрасываем слои.
   function handlePhotoUpload(dataUrl: string | null) {
     setPhoto(dataUrl);
-    if (dataUrl) originalPhotoRef.current = dataUrl;
+    originalPhotoRef.current = dataUrl;
     setLayerCount(1);
+    setMaskHasStrokes(false);
+    lastMaskRef.current = null;
   }
+
+  function handleRefine() {
+    if (!selectedTile) return;
+    void generateFor(selectedTile, { refinements: currentRefinements() });
+  }
+
+  function toggleFacadeZone(zone: FacadeZone) {
+    setZones((current) => {
+      if (zone === 'full') return ['full'];
+      const partialZones = current.filter((currentZone) => currentZone !== 'full');
+      if (partialZones.includes(zone)) {
+        const nextZones = partialZones.filter((currentZone) => currentZone !== zone);
+        return nextZones.length > 0 ? nextZones : ['full'];
+      }
+      return [...partialZones, zone];
+    });
+  }
+
+  const facadeIsPartial = mode === 'facade' && !zones.includes('full');
+  const photoTips =
+    mode === 'facade'
+      ? [
+          'Снимайте дом целиком — прямо или под небольшим углом',
+          'Оставьте в кадре весь фасад, включая линию крыши',
+          'Фотографируйте при ровном дневном свете',
+          'Держите камеру ровно, без сильного наклона и искажения перспективы',
+        ]
+      : [
+          'Снимайте при дневном свете, без вспышки',
+          'Держите камеру ровно, лицом к стене или полу',
+          'Захватите поверхность целиком, без сильного наклона',
+          'Уберите лишние предметы с пола или стены',
+          'Следите за резкостью — без размытия и пересветов',
+          'Чем выше разрешение, тем точнее результат',
+        ];
 
   if (stage === 'generating') {
     return (
@@ -278,8 +455,9 @@ function VisualizePageInner() {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-12">
         <button
+          type="button"
           onClick={handleReset}
-          className="mb-4 inline-flex items-center gap-2 text-sm text-mist-400 hover:text-gold-400 cursor-pointer"
+          className="mb-4 inline-flex cursor-pointer items-center gap-2 text-sm text-mist-400 hover:text-gold-400"
         >
           <ArrowLeft size={14} /> Назад к загрузке
         </button>
@@ -311,19 +489,19 @@ function VisualizePageInner() {
               </div>
             )}
             <button
+              type="button"
               onClick={handleContinue}
-              className="btn-gold w-full !py-3 text-sm cursor-pointer"
+              className="btn-gold w-full cursor-pointer !py-3 text-sm"
             >
               <Layers size={16} /> Добавить плитку на другой участок
             </button>
             <p className="-mt-2 px-1 text-xs text-mist-400">
-              Возьмём этот результат за основу: выделите кистью или прямоугольником <b>другой</b> участок дома и выберите <b>другую</b> плитку — наложим поверх, не трогая уже облицованное.
+              Возьмём этот результат за основу: выделите кистью другой участок и выберите
+              другую плитку — наложим поверх, не трогая уже облицованное.
             </p>
 
             <div className="card p-5">
-              <div className="text-xs uppercase tracking-wider text-mist-400">
-                Выбрано
-              </div>
+              <div className="text-xs uppercase tracking-wider text-mist-400">Выбрано</div>
               <div className="mt-2 flex gap-3">
                 {selectedTile && (
                   <>
@@ -338,7 +516,8 @@ function VisualizePageInner() {
                     <div>
                       <div className="font-semibold">{selectedTile.name}</div>
                       <div className="text-xs text-mist-400">
-                        {selectedTile.collection || ""}{selectedTile.dimensions ? ` · ${selectedTile.dimensions}` : ""}
+                        {selectedTile.collection || ''}
+                        {selectedTile.dimensions ? ` · ${selectedTile.dimensions}` : ''}
                       </div>
                     </div>
                   </>
@@ -348,25 +527,139 @@ function VisualizePageInner() {
                 <a
                   href={resultUrl}
                   download="japan-ceramic-visualization.jpg"
-                  className="btn-ghost !py-2 !px-3 text-sm"
+                  className="btn-ghost !px-3 !py-2 text-sm"
                 >
                   <Download size={14} /> Скачать
                 </a>
                 {(() => {
-                  const wa = waLink(contacts?.whatsapp);
-                  const text = encodeURIComponent(`Здравствуйте! Интересует плитка ${selectedTile?.name}. Можно образец?`);
-                  const href = wa ? `${wa}${wa.includes("?") ? "&" : "?"}text=${text}` : "/#contacts";
+                  const whatsapp = waLink(contacts?.whatsapp);
+                  const text = encodeURIComponent(
+                    `Здравствуйте! Интересует плитка ${selectedTile?.name}. Можно образец?`,
+                  );
+                  const href = whatsapp
+                    ? `${whatsapp}${whatsapp.includes('?') ? '&' : '?'}text=${text}`
+                    : '/#contacts';
                   return (
                     <a
                       href={href}
-                      target={wa ? "_blank" : undefined}
-                      rel={wa ? "noopener" : undefined}
-                      className="btn-gold !py-2 !px-3 text-sm"
+                      target={whatsapp ? '_blank' : undefined}
+                      rel={whatsapp ? 'noopener' : undefined}
+                      className="btn-gold !px-3 !py-2 text-sm"
                     >
                       <MessageCircle size={14} /> Заявка
                     </a>
                   );
                 })()}
+              </div>
+            </div>
+
+            <div className="card p-5">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-mist-400">
+                <SlidersHorizontal size={14} className="text-gold-400" /> Уточнить
+              </div>
+              <div className="mt-4 space-y-4">
+                {mode === 'facade' && (
+                  <>
+                    <FacadeZonePicker zones={zones} onToggle={toggleFacadeZone} compact />
+                    {facadeIsPartial && (
+                      <FacadeColorPicker
+                        baseColor={baseColor}
+                        onChange={setBaseColor}
+                        compact
+                      />
+                    )}
+                  </>
+                )}
+
+                <div>
+                  <div className="mb-2 text-xs font-medium text-mist-300">
+                    Схема укладки
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PATTERN_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setPattern(option.value)}
+                        className={cn(
+                          'cursor-pointer rounded-lg border px-2.5 py-2 text-xs font-medium transition',
+                          pattern === option.value
+                            ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                            : 'border-white/10 text-mist-400 hover:border-white/30',
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-medium text-mist-300">Ориентация</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ORIENTATION_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setOrientation(option.value)}
+                        className={cn(
+                          'cursor-pointer rounded-lg border px-2.5 py-2 text-xs font-medium transition',
+                          orientation === option.value
+                            ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                            : 'border-white/10 text-mist-400 hover:border-white/30',
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-medium text-mist-300">Затирка</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {GROUT_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setGrout(option.value)}
+                        className={cn(
+                          'cursor-pointer rounded-lg border px-2 py-2 text-xs font-medium transition',
+                          grout === option.value
+                            ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                            : 'border-white/10 text-mist-400 hover:border-white/30',
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-medium text-mist-300">
+                    Что поправить?
+                  </span>
+                  <textarea
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    maxLength={300}
+                    rows={3}
+                    placeholder="например: сделай швы тоньше"
+                    className="w-full resize-y rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm text-mist-100 outline-none transition placeholder:text-mist-500 focus:border-gold-500/70"
+                  />
+                  <span className="mt-1 block text-right text-[10px] text-mist-500">
+                    {note.length}/300
+                  </span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleRefine}
+                  className="btn-gold w-full !px-4 !py-3 text-sm"
+                >
+                  <RefreshCw size={15} /> Перегенерировать
+                </button>
               </div>
             </div>
 
@@ -397,7 +690,7 @@ function VisualizePageInner() {
                   rel="noopener"
                   className="mt-3 inline-block text-sm text-gold-400 hover:underline"
                 >
-                  {contacts.address || "Шоурум на карте"} →
+                  {contacts.address || 'Шоурум на карте'} →
                 </a>
               )}
             </div>
@@ -412,10 +705,11 @@ function VisualizePageInner() {
       <div className="mb-8">
         <span className="label-pill">ИИ-визуализация</span>
         <h1 className="mt-3 font-display text-3xl font-bold sm:text-4xl">
-          Примерьте плитку в своей комнате
+          Примерьте плитку в своём пространстве
         </h1>
         <p className="mt-2 text-mist-400">
-          Загрузите фото комнаты, выберите плитку — и через 15-30 секунд увидите результат.
+          Загрузите фото, выберите поверхность и плитку — визуализатор сохранит сцену и
+          реальный характер материала.
         </p>
       </div>
 
@@ -427,14 +721,23 @@ function VisualizePageInner() {
             <div className="mt-1 text-mist-400">{errorMsg}</div>
             {selectedTile && photo && (
               <button
-                onClick={() => { setErrorMsg(null); handleGenerate(); }}
-                className="btn-gold mt-3 !px-4 !py-2 text-xs cursor-pointer"
+                type="button"
+                onClick={() => {
+                  setErrorMsg(null);
+                  handleGenerate();
+                }}
+                className="btn-gold mt-3 cursor-pointer !px-4 !py-2 text-xs"
               >
                 <RotateCcw size={14} /> Попробовать снова
               </button>
             )}
           </div>
-          <button onClick={handleReset} aria-label="Закрыть" className="text-mist-400 hover:text-mist-100 cursor-pointer">
+          <button
+            type="button"
+            onClick={handleReset}
+            aria-label="Закрыть"
+            className="cursor-pointer text-mist-400 hover:text-mist-100"
+          >
             <RotateCcw size={16} />
           </button>
         </div>
@@ -444,7 +747,7 @@ function VisualizePageInner() {
         <div className="space-y-6">
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
-              {photo && mode === 'mask' ? 'Выделите участок' : 'Фото комнаты'}
+              {photo && mode === 'mask' ? 'Выделите участок' : 'Фото пространства'}
             </h2>
             {photo && mode === 'mask' ? (
               <div className="space-y-3">
@@ -454,17 +757,13 @@ function VisualizePageInner() {
                   onMaskChange={setMaskHasStrokes}
                 />
                 <p className="text-xs text-mist-400">
-                  Обведите участок — ИИ распознает стену, окна и двери и наложит плитку по реальной
-                  перспективе фасада, не задевая проёмы.
+                  Закрасьте участок: плитка появится только внутри белой маски, а окна,
+                  двери и остальная сцена останутся без изменений.
                 </p>
-
                 <button
-                  onClick={() => {
-                    setPhoto(null);
-                    setMaskHasStrokes(false);
-                    lastMaskRef.current = null;
-                  }}
-                  className="text-xs text-mist-400 hover:text-gold-400 cursor-pointer"
+                  type="button"
+                  onClick={() => handlePhotoUpload(null)}
+                  className="cursor-pointer text-xs text-mist-400 hover:text-gold-400"
                 >
                   ← Сменить фото
                 </button>
@@ -479,14 +778,7 @@ function VisualizePageInner() {
               <Camera size={16} /> Как сфотографировать
             </h2>
             <ul className="space-y-2.5 text-sm text-mist-300">
-              {[
-                'Снимайте при дневном свете, без вспышки',
-                'Держите камеру ровно, лицом к стене или полу',
-                'Захватите поверхность целиком, без сильного наклона',
-                'Уберите лишние предметы с пола или стены',
-                'Следите за резкостью — без размытия и пересветов',
-                'Чем выше разрешение, тем точнее результат',
-              ].map((tip) => (
+              {photoTips.map((tip) => (
                 <li key={tip} className="flex items-start gap-2.5">
                   <Check size={16} className="mt-0.5 shrink-0 text-gold-400" />
                   <span>{tip}</span>
@@ -500,27 +792,41 @@ function VisualizePageInner() {
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
                 Что менять
               </h2>
-              <div className="grid grid-cols-3 gap-2">
-                {MODES.map((m) => (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {MODES.map((option) => (
                   <button
-                    key={m.id}
-                    onClick={() => setMode(m.id)}
+                    key={option.id}
+                    type="button"
+                    onClick={() => handleModeChange(option.id)}
                     className={cn(
-                      'inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-sm font-medium transition cursor-pointer',
-                      mode === m.id
+                      'inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-sm font-medium transition',
+                      mode === option.id
                         ? 'border-gold-500 bg-gold-500/10 text-gold-400'
                         : 'border-white/10 text-mist-400 hover:border-white/30',
                     )}
                   >
-                    {m.id === 'mask' && <Brush size={15} />}
-                    {m.label}
+                    {option.id === 'mask' && <Brush size={15} />}
+                    {option.label}
                   </button>
                 ))}
               </div>
               {mode === 'mask' && (
                 <p className="mt-2 text-xs text-mist-400">
-                  Обведите участок прямоугольником (или закрасьте кистью), затем выберите клинкер. Несколько материалов комбинируйте по очереди.
+                  Закрасьте нужный участок, затем выберите плитку. Несколько материалов
+                  можно комбинировать по очереди.
                 </p>
+              )}
+
+              {mode === 'facade' && (
+                <div className="mt-5 space-y-5">
+                  <FacadeZonePicker zones={zones} onToggle={toggleFacadeZone} />
+                  {facadeIsPartial && (
+                    <FacadeColorPicker
+                      baseColor={baseColor}
+                      onChange={setBaseColor}
+                    />
+                  )}
+                </div>
               )}
             </section>
           )}
@@ -530,8 +836,8 @@ function VisualizePageInner() {
               <h2 className="text-sm font-semibold uppercase tracking-wider text-mist-400">
                 Реальные размеры поверхности
               </h2>
-              <p className="mt-1 mb-3 text-xs text-mist-400">
-                Необязательно, но помогает ИИ положить плитку в правильном масштабе, а не «на глаз».
+              <p className="mb-3 mt-1 text-xs text-mist-400">
+                Необязательно, но помогает положить плитку в правильном масштабе.
               </p>
               {mode === 'floor' ? (
                 <label className="block">
@@ -542,7 +848,7 @@ function VisualizePageInner() {
                     min="0"
                     step="0.1"
                     value={areaM2}
-                    onChange={(e) => setAreaM2(e.target.value)}
+                    onChange={(event) => setAreaM2(event.target.value)}
                     placeholder="напр. 18"
                     className="mt-1 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm outline-none transition focus:border-white/30"
                   />
@@ -557,7 +863,7 @@ function VisualizePageInner() {
                       min="0"
                       step="0.1"
                       value={widthM}
-                      onChange={(e) => setWidthM(e.target.value)}
+                      onChange={(event) => setWidthM(event.target.value)}
                       placeholder="напр. 6"
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm outline-none transition focus:border-white/30"
                     />
@@ -570,7 +876,7 @@ function VisualizePageInner() {
                       min="0"
                       step="0.1"
                       value={heightM}
-                      onChange={(e) => setHeightM(e.target.value)}
+                      onChange={(event) => setHeightM(event.target.value)}
                       placeholder="напр. 3"
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm outline-none transition focus:border-white/30"
                     />
@@ -579,7 +885,6 @@ function VisualizePageInner() {
               )}
             </section>
           )}
-
         </div>
 
         <div className="space-y-4">
@@ -597,22 +902,111 @@ function VisualizePageInner() {
 
       <div className="sticky bottom-4 z-30 mt-10 flex flex-col items-center gap-2 px-4">
         <button
+          type="button"
           onClick={handleGenerate}
           disabled={!canGenerate}
-          className="btn-gold w-full max-w-md !px-6 !py-4 text-base disabled:!bg-[rgba(255,255,255,.06)] disabled:!text-[var(--ink-soft)] disabled:!shadow-none disabled:cursor-not-allowed disabled:hover:!transform-none sm:w-auto cursor-pointer"
+          className="btn-gold w-full max-w-md cursor-pointer !px-6 !py-4 text-base disabled:cursor-not-allowed disabled:!bg-[rgba(255,255,255,.06)] disabled:!text-[var(--ink-soft)] disabled:!shadow-none disabled:hover:!transform-none sm:w-auto"
         >
           <Sparkles size={18} />
           {!photo
-            ? 'Загрузите фото комнаты'
+            ? 'Загрузите фото'
             : mode === 'mask' && !maskHasStrokes
               ? 'Выделите участок кистью'
               : !selectedTile
                 ? 'Выберите плитку'
                 : 'Сгенерировать визуализацию'}
         </button>
-        {photo && selectedTile && (
-          <p className="text-xs text-mist-400">~15–30 секунд</p>
+        {photo && selectedTile && <p className="text-xs text-mist-400">до 2 минут</p>}
+      </div>
+    </div>
+  );
+}
+
+function FacadeZonePicker({
+  zones,
+  onToggle,
+  compact = false,
+}: {
+  zones: FacadeZone[];
+  onToggle: (zone: FacadeZone) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div>
+      <h3
+        className={cn(
+          'font-medium text-mist-300',
+          compact
+            ? 'mb-2 text-xs'
+            : 'mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400',
         )}
+      >
+        Зоны облицовки
+      </h3>
+      <div className="flex flex-wrap gap-2">
+        {FACADE_ZONE_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onToggle(option.value)}
+            className={cn(
+              'cursor-pointer border font-medium transition',
+              compact
+                ? 'rounded-lg px-2.5 py-2 text-xs'
+                : 'rounded-xl px-3 py-2 text-sm',
+              zones.includes(option.value)
+                ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                : 'border-white/10 text-mist-400 hover:border-white/30',
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FacadeColorPicker({
+  baseColor,
+  onChange,
+  compact = false,
+}: {
+  baseColor: FacadeBaseColor;
+  onChange: (color: FacadeBaseColor) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div>
+      <h3
+        className={cn(
+          'font-medium text-mist-300',
+          compact
+            ? 'mb-2 text-xs'
+            : 'mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400',
+        )}
+      >
+        Цвет основного фасада
+      </h3>
+      <div className="grid grid-cols-3 gap-2">
+        {FACADE_BASE_COLOR_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={cn(
+              'cursor-pointer border font-medium transition',
+              compact
+                ? 'rounded-lg px-2 py-2 text-xs'
+                : 'rounded-xl px-3 py-2 text-sm',
+              baseColor === option.value
+                ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                : 'border-white/10 text-mist-400 hover:border-white/30',
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -620,7 +1014,13 @@ function VisualizePageInner() {
 
 export default function VisualizePage() {
   return (
-    <Suspense fallback={<div className="mx-auto max-w-7xl px-4 py-16 text-center text-mist-400">Загрузка…</div>}>
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-7xl px-4 py-16 text-center text-mist-400">
+          Загрузка…
+        </div>
+      }
+    >
       <VisualizePageInner />
     </Suspense>
   );

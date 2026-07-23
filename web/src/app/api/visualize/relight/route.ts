@@ -6,7 +6,7 @@ import { prisma } from '@/lib/db';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Делает готовую (точную по размеру) раскладку клинкера фотореалистичной через Gemini:
+// Делает готовую (точную по размеру) раскладку фотореалистичной через fal Nano Banana:
 // добавляет свет/тени, не трогая размер и раскладку.
 export async function POST(req: Request) {
   const user = await getSession();
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
           tileSlug: body.tileSlug ?? 'relight',
           tileName: body.tileName ?? 'relight',
           surface: 'mask',
-          provider: 'gemini-relight',
+          provider: 'fal-nano-banana-relight',
           promptTokens: out.usage?.promptTokens ?? 0,
           outputTokens: out.usage?.outputTokens ?? 0,
           totalTokens: out.usage?.totalTokens ?? 0,

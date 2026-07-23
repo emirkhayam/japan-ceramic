@@ -2,11 +2,12 @@ import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
+import type { Surface } from '@/lib/ai';
 
 export type CacheKey = {
   roomImage: string;
   tileId: string;
-  surface: 'floor' | 'wall';
+  surface: Surface;
   provider: string;
 };
 

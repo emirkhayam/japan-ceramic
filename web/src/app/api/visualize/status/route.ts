@@ -4,7 +4,7 @@ import { pollGptImageJob } from '@/lib/ai';
 
 export const runtime = 'nodejs';
 
-// Опрос статуса асинхронного рендера gpt-image-1 (см. POST /api/visualize → { requestId }).
+// Опрос статуса асинхронного рендера Nano Banana (POST /api/visualize → requestId).
 // Запрос лёгкий и быстрый, поэтому в таймауты прокси не упирается.
 export async function GET(req: Request) {
   const user = await getSession();

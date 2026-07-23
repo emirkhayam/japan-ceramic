@@ -5,10 +5,10 @@ import { compositeMaskedResult } from '@/lib/ai';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Финальная обрезка результата gpt-image-1 по маске выделения (+ исключение окон/дверей).
+// Финальная страховочная обрезка результата Nano Banana по маске (+ окна/двери).
 // Вызывается клиентом ПОСЛЕ готовности рендера (см. POST /api/visualize → requestId →
-// /api/visualize/status). gpt-image-1 не имеет нативной маски и кладёт плитку на весь
-// фасад — здесь детерминированно оставляем её только в выбранной зоне на стене.
+// /api/visualize/status). Даже если модель вышла за белую область, здесь
+// детерминированно оставляем изменения только в выбранной зоне.
 export async function POST(req: Request) {
   const user = await getSession();
   if (!user) {

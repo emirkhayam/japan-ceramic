@@ -2,9 +2,24 @@ import { prisma } from "@/lib/db";
 import AiBudgetEditor from "./AiBudgetEditor";
 
 export const dynamic = "force-dynamic";
+const PRICE_PER_IMAGE_KGS = 13.12;
 
 function fmt(n: number) {
   return n.toLocaleString("ru-RU");
+}
+
+function fmtKgs(n: number) {
+  return n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+}
+
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="px-5 py-5 bg-[var(--surface-1)] border border-[var(--line)] rounded-lg">
+      <div className="text-[11px] tracking-[.06em] uppercase text-[var(--ink-mute)] mb-2">{label}</div>
+      <div className="tabular-nums text-[28px] font-light leading-none">{value}</div>
+      {sub && <div className="text-[12px] text-[var(--ink-faint)] mt-2">{sub}</div>}
+    </div>
+  );
 }
 
 export default async function AdminVisualizationsPage() {
@@ -12,28 +27,26 @@ export default async function AdminVisualizationsPage() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const [allAgg, monthAgg, perUser, settings] = await Promise.all([
-    prisma.visualizationLog.aggregate({ _count: { _all: true }, _sum: { totalTokens: true } }),
+    prisma.visualizationLog.aggregate({ _count: { _all: true } }),
     prisma.visualizationLog.aggregate({
       where: { createdAt: { gte: monthStart } },
       _count: { _all: true },
-      _sum: { totalTokens: true },
     }),
     prisma.visualizationLog.groupBy({
       by: ["userId"],
       _count: { _all: true },
-      _sum: { totalTokens: true },
       _max: { createdAt: true },
     }),
     prisma.siteSettings.findUnique({ where: { id: "default" }, select: { aiTokenBudget: true } }),
   ]);
 
   const totalCount = allAgg._count._all;
-  const totalTokens = allAgg._sum.totalTokens ?? 0;
   const monthCount = monthAgg._count._all;
-  const monthTokens = monthAgg._sum.totalTokens ?? 0;
-  const budget = settings?.aiTokenBudget ?? null;
-  const remaining = budget != null ? Math.max(0, budget - monthTokens) : null;
-  const usedPct = budget && budget > 0 ? Math.min(100, Math.round((monthTokens / budget) * 100)) : 0;
+  const storedBudget = settings?.aiTokenBudget ?? null;
+  const hasLegacyBudget = storedBudget != null && storedBudget > 1000;
+  const budget = storedBudget != null && storedBudget >= 1 && storedBudget <= 1000 ? storedBudget : null;
+  const remaining = budget != null ? Math.max(0, budget - monthCount) : null;
+  const usedPct = budget ? Math.min(100, Math.round((monthCount / budget) * 100)) : 0;
 
   // Имена пользователей для таблицы.
   const userIds = perUser.map((r) => r.userId);
@@ -49,27 +62,18 @@ export default async function AdminVisualizationsPage() {
     .map((r) => ({
       user: userMap.get(r.userId),
       count: r._count._all,
-      tokens: r._sum.totalTokens ?? 0,
       last: r._max.createdAt,
     }))
     .sort((a, b) => b.count - a.count);
 
   const monthLabel = now.toLocaleString("ru-RU", { month: "long", year: "numeric" });
 
-  const Stat = ({ label, value, sub }: { label: string; value: string; sub?: string }) => (
-    <div className="px-5 py-5 bg-[var(--surface-1)] border border-[var(--line)] rounded-lg">
-      <div className="text-[11px] tracking-[.06em] uppercase text-[var(--ink-mute)] mb-2">{label}</div>
-      <div className="tabular-nums text-[28px] font-light leading-none">{value}</div>
-      {sub && <div className="text-[12px] text-[var(--ink-faint)] mt-2">{sub}</div>}
-    </div>
-  );
-
   return (
     <div className="pb-12 max-w-[1000px]">
       <div className="mb-8">
         <h2 className="text-[clamp(22px,2.5vw,30px)] font-extralight tracking-tight">AI-визуализации</h2>
         <p className="text-[13px] text-[var(--ink-mute)] mt-1.5">
-          Использование AI-визуализатора по пользователям и расход токенов.
+          Использование AI-визуализатора по пользователям и число генераций.
         </p>
       </div>
 
@@ -77,22 +81,30 @@ export default async function AdminVisualizationsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         <Stat label="Всего визуализаций" value={fmt(totalCount)} />
         <Stat label={`За ${monthLabel}`} value={fmt(monthCount)} sub="визуализаций" />
-        <Stat label="Токенов всего" value={fmt(totalTokens)} />
-        <Stat label="Токенов за месяц" value={fmt(monthTokens)} />
+        <Stat
+          label="Стоимость за месяц"
+          value={`≈ ${fmtKgs(monthCount * PRICE_PER_IMAGE_KGS)} сом`}
+          sub={`${fmtKgs(PRICE_PER_IMAGE_KGS)} сом / картинка`}
+        />
+        <Stat
+          label="Остаток лимита"
+          value={remaining != null ? fmt(remaining) : "—"}
+          sub={budget != null ? `из ${fmt(budget)} генераций` : "лимит не задан"}
+        />
       </div>
 
-      {/* Бюджет токенов */}
+      {/* Месячный лимит генераций */}
       <div className="border border-[var(--line)] rounded-lg p-6 mb-6">
-        <h3 className="text-[15px] font-medium mb-1">Лимит и остаток токенов</h3>
+        <h3 className="text-[15px] font-medium mb-1">Месячный лимит генераций</h3>
         <p className="text-[13px] text-[var(--ink-mute)] mb-5">
-          Google не отдаёт остаток баланса по API, поэтому «осталось» считается от заданного вами месячного лимита.
+          fal.ai не отдаёт остаток баланса через используемый API, поэтому доступное число генераций считается от заданного вами месячного лимита.
         </p>
 
         {budget != null ? (
           <div className="mb-5">
             <div className="flex justify-between text-[13px] mb-2">
               <span className="text-[var(--ink-soft)]">
-                Израсходовано за {monthLabel}: <span className="tabular-nums text-[var(--ink)]">{fmt(monthTokens)}</span> из {fmt(budget)}
+                Использовано за {monthLabel}: <span className="tabular-nums text-[var(--ink)]">{fmt(monthCount)}</span> из {fmt(budget)} генераций
               </span>
               <span className="tabular-nums text-[var(--color-gold-400)]">осталось {fmt(remaining ?? 0)}</span>
             </div>
@@ -103,11 +115,15 @@ export default async function AdminVisualizationsPage() {
               />
             </div>
             {usedPct >= 90 && (
-              <p className="text-[12px] text-[var(--danger)] mt-2">Лимит почти исчерпан — пополните квоту в Google (см. ниже).</p>
+              <p className="text-[12px] text-[var(--danger)] mt-2">Лимит генераций почти исчерпан — увеличьте его или проверьте баланс fal.ai.</p>
             )}
           </div>
         ) : (
-          <p className="text-[13px] text-[var(--ink-faint)] mb-5">Лимит не задан — задайте, чтобы видеть остаток.</p>
+          <p className="text-[13px] text-[var(--ink-faint)] mb-5">
+            {hasLegacyBudget
+              ? "Сохранён старый лимит в токенном масштабе. Задайте новый лимит генераций от 1 до 1000."
+              : "Лимит не задан — задайте, чтобы видеть остаток генераций."}
+          </p>
         )}
 
         <AiBudgetEditor initial={budget} />
@@ -116,22 +132,22 @@ export default async function AdminVisualizationsPage() {
       {/* Как пополнять */}
       <details className="border border-[var(--line)] rounded-lg p-6 mb-8 group">
         <summary className="text-[15px] font-medium cursor-pointer list-none flex items-center justify-between">
-          Как пополнить токены / увеличить лимит
+          Как пополнить баланс fal.ai / увеличить лимит
           <span className="text-[var(--ink-faint)] text-[12px] group-open:rotate-180 transition-transform">▾</span>
         </summary>
         <div className="text-[13.5px] text-[var(--ink-soft)] leading-[1.7] mt-4 space-y-3">
           <p>
-            Токены для AI-визуализации — это квота <strong>Google Gemini</strong> (модель Gemini Image). Пополнение
-            происходит не в этой админке, а на стороне Google:
+            AI-визуализация использует платный API <strong>fal.ai</strong> (модель Nano Banana Pro). Пополнение
+            происходит не в этой админке, а на стороне fal.ai:
           </p>
           <ol className="list-decimal pl-5 space-y-1.5">
-            <li>Откройте <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[var(--color-gold-400)] hover:underline">Google AI Studio → API keys</a> того аккаунта, чей ключ указан в <code className="text-[var(--ink)]">GOOGLE_API_KEY</code>.</li>
-            <li>Подключите проект к биллингу в <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener" className="text-[var(--color-gold-400)] hover:underline">Google Cloud Console → Billing</a> — это снимает ограничения бесплатного tier и поднимает лимиты.</li>
-            <li>Текущие лимиты и фактический расход смотрите в <a href="https://console.cloud.google.com/apis/dashboard" target="_blank" rel="noopener" className="text-[var(--color-gold-400)] hover:underline">APIs &amp; Services → Quotas</a>.</li>
-            <li>После изменения квот обновите при необходимости месячный лимит выше — он влияет только на отображение «остатка» здесь.</li>
+            <li>Откройте <a href="https://fal.ai/dashboard" target="_blank" rel="noopener" className="text-[var(--color-gold-400)] hover:underline">панель fal.ai</a> того аккаунта, чей ключ указан в <code className="text-[var(--ink)]">FAL_KEY</code>.</li>
+            <li>Пополните баланс или настройте биллинг в разделе Billing.</li>
+            <li>Фактический расход и историю запросов смотрите в разделе Usage.</li>
+            <li>После изменения квот обновите при необходимости месячный лимит выше — он ограничивает число запросов к визуализатору.</li>
           </ol>
           <p className="text-[12px] text-[var(--ink-faint)]">
-            Бесплатный tier Gemini имеет суточные/минутные лимиты запросов. При их превышении визуализатор вернёт ошибку — это сигнал поднять квоту.
+            Nano Banana Pro тарифицируется за каждое изображение; при исчерпании баланса визуализатор вернёт ошибку.
           </p>
         </div>
       </details>
@@ -149,8 +165,8 @@ export default async function AdminVisualizationsPage() {
               <tr className="text-left text-[11px] tracking-[.14em] uppercase text-[var(--ink-mute)] font-medium border-b border-[var(--line-2)]">
                 <th className="py-3">Пользователь</th>
                 <th className="py-3">Email</th>
-                <th className="py-3 text-right">Визуализаций</th>
-                <th className="py-3 text-right">Токенов</th>
+                <th className="py-3 text-right">Генераций</th>
+                <th className="py-3 text-right">Стоимость</th>
                 <th className="py-3">Последняя</th>
               </tr>
             </thead>
@@ -160,7 +176,7 @@ export default async function AdminVisualizationsPage() {
                   <td className="py-3 text-sm">{r.user?.fullName ?? "— удалён —"}</td>
                   <td className="py-3 text-sm text-[var(--ink-soft)]">{r.user?.email ?? "—"}</td>
                   <td className="py-3 text-sm tabular-nums text-right">{fmt(r.count)}</td>
-                  <td className="py-3 text-sm tabular-nums text-right text-[var(--ink-soft)]">{fmt(r.tokens)}</td>
+                  <td className="py-3 text-sm tabular-nums text-right text-[var(--ink-soft)]">≈ {fmtKgs(r.count * PRICE_PER_IMAGE_KGS)} сом</td>
                   <td className="py-3 text-[12px] text-[var(--ink-faint)]">
                     {r.last ? new Date(r.last).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
                   </td>

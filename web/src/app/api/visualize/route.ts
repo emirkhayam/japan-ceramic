@@ -1,28 +1,61 @@
 import { NextResponse } from 'next/server';
-import { getTileById } from '@/lib/tiles';
-import { visualize, submitGptImageJob, submitEvfSamJob, RENDER_PROVIDER_LABEL, type Provider } from '@/lib/ai';
-import { lookupCache } from '@/lib/demo-cache';
+import {
+  RENDER_PROVIDER_LABEL,
+  submitEvfSamJob,
+  submitGptImageJob,
+  visualize,
+  type FacadeBaseColor,
+  type FacadeZone,
+  type Grout,
+  type Orientation,
+  type Pattern,
+  type Provider,
+  type Surface,
+  type VisualizeInput,
+} from '@/lib/ai';
 import { getSession } from '@/lib/auth';
+import { lookupCache } from '@/lib/demo-cache';
 import { prisma } from '@/lib/db';
-import { resolveTileSize } from '@/lib/tile';
+import {
+  resolveTileSize,
+  tilesAcross as countTilesAcross,
+  tilesDown as countTilesDown,
+} from '@/lib/tile';
+import { getTileById } from '@/lib/tiles';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 type Body = {
-  roomImage: string;
-  tileId: string;
-  surface: 'floor' | 'wall' | 'mask';
-  /** PNG-маска (data URL): белое = куда класть плитку. Обязательна при surface==='mask'. */
-  maskImage?: string;
-  /** Реальная ширина поверхности (стена/выделение), в метрах. Для корректного масштаба плитки. */
-  regionWidthM?: number;
-  /** Реальная высота поверхности (стена/выделение), в метрах. Даёт число рядов плиток. */
-  regionHeightM?: number;
-  /** Реальная площадь пола, м² (для surface==='floor'). */
-  floorAreaM2?: number;
-  provider?: Provider;
+  roomImage?: unknown;
+  tileId?: unknown;
+  surface?: unknown;
+  maskImage?: unknown;
+  regionWidthM?: unknown;
+  regionHeightM?: unknown;
+  floorAreaM2?: unknown;
+  provider?: unknown;
+  pattern?: unknown;
+  orientation?: unknown;
+  grout?: unknown;
+  zones?: unknown;
+  baseColor?: unknown;
+  note?: unknown;
 };
+
+const DAILY_VISUALIZATION_LIMIT = 5;
+const PATTERNS: Pattern[] = ['stack', 'offset-half', 'offset-third', 'herringbone'];
+const ORIENTATIONS: Orientation[] = ['horizontal', 'vertical'];
+const GROUTS: Grout[] = ['match', 'contrast', 'minimal'];
+const FACADE_ZONES: FacadeZone[] = [
+  'full',
+  'between-windows',
+  'around-windows',
+  'corners',
+  'plinth',
+  'columns',
+];
+const FACADE_BASE_COLORS: FacadeBaseColor[] = ['white', 'beige', 'grey'];
 
 export async function POST(req: Request) {
   const user = await getSession();
@@ -39,17 +72,18 @@ export async function POST(req: Request) {
     );
   }
 
-  // Дневной лимит визуализаций на пользователя (админов не ограничиваем).
-  const DAILY_VIZ_LIMIT = 5;
+  // Личный дневной лимит и глобальный месячный бюджет независимы и работают вместе.
   if (user.role !== 'admin') {
     const dayStart = new Date();
     dayStart.setHours(0, 0, 0, 0);
     const todayCount = await prisma.visualizationLog.count({
       where: { userId: user.id, createdAt: { gte: dayStart } },
     });
-    if (todayCount >= DAILY_VIZ_LIMIT) {
+    if (todayCount >= DAILY_VISUALIZATION_LIMIT) {
       return NextResponse.json(
-        { error: `Дневной лимит визуализаций исчерпан (${DAILY_VIZ_LIMIT} в день). Попробуйте завтра.` },
+        {
+          error: `Дневной лимит визуализаций исчерпан (${DAILY_VISUALIZATION_LIMIT} в день). Попробуйте завтра.`,
+        },
         { status: 429 },
       );
     }
@@ -57,12 +91,42 @@ export async function POST(req: Request) {
 
   let body: Body;
   try {
-    body = await req.json();
+    const parsed: unknown = await req.json();
+    body = parsed !== null && typeof parsed === 'object' ? (parsed as Body) : {};
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { roomImage, tileId, surface, maskImage, provider } = body;
+  const roomImage = typeof body.roomImage === 'string' ? body.roomImage : '';
+  const tileId = typeof body.tileId === 'string' ? body.tileId : '';
+  const surface: Surface | null =
+    body.surface === 'floor' ||
+    body.surface === 'wall' ||
+    body.surface === 'mask' ||
+    body.surface === 'facade'
+      ? body.surface
+      : null;
+  const maskImage = typeof body.maskImage === 'string' ? body.maskImage : undefined;
+  const provider: Provider | undefined =
+    body.provider === 'fal' || body.provider === 'mock' ? body.provider : undefined;
+  const requestedPattern = PATTERNS.includes(body.pattern as Pattern)
+    ? (body.pattern as Pattern)
+    : undefined;
+  const orientation: Orientation = ORIENTATIONS.includes(body.orientation as Orientation)
+    ? (body.orientation as Orientation)
+    : 'horizontal';
+  const grout: Grout = GROUTS.includes(body.grout as Grout)
+    ? (body.grout as Grout)
+    : 'match';
+  const zones = normalizeFacadeZones(body.zones);
+  const baseColor: FacadeBaseColor = FACADE_BASE_COLORS.includes(
+    body.baseColor as FacadeBaseColor,
+  )
+    ? (body.baseColor as FacadeBaseColor)
+    : 'white';
+  const note =
+    typeof body.note === 'string' ? body.note.trim().slice(0, 300) || undefined : undefined;
+
   if (!roomImage || !tileId || !surface) {
     return NextResponse.json(
       { error: 'roomImage, tileId, and surface are required' },
@@ -76,141 +140,177 @@ export async function POST(req: Request) {
     );
   }
 
-  // Try static tiles first, then database products
-  const staticTile = getTileById(tileId);
+  const budgetResponse = await checkMonthlyGenerationBudget();
+  if (budgetResponse) return budgetResponse;
+
+  // Товар из БД приоритетнее статического каталога при совпадающем id/slug.
+  const dbProduct = await prisma.product.findFirst({
+    where: { OR: [{ slug: tileId }, { id: tileId }] },
+    include: {
+      category: true,
+      images: { orderBy: { sortOrder: 'asc' }, take: 4 },
+    },
+  });
+  const staticTile = dbProduct ? undefined : getTileById(tileId);
   const origin = req.headers.get('origin') || new URL(req.url).origin;
 
   let tileName: string;
-  let tileImageUrl: string;
+  let tileImageUrls: string[];
   let tileKey: string;
-  let tileDimsRaw: string | null = null;
+  let tileDims: { wmm: number; hmm: number };
+  let isClinker: boolean;
 
-  if (staticTile) {
-    tileName = `${staticTile.name} (${staticTile.texture}, ${staticTile.size})`;
-    tileImageUrl = staticTile.image.startsWith('http')
-      ? staticTile.image
-      : `${origin}${staticTile.image}`;
-    tileKey = staticTile.id;
-    tileDimsRaw = staticTile.size;
-  } else {
-    // Look up in database by slug or id
-    const dbProduct = await prisma.product.findFirst({
-      where: { OR: [{ slug: tileId }, { id: tileId }] },
-      include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } },
-    });
-    if (!dbProduct) {
-      return NextResponse.json({ error: `Unknown tile: ${tileId}` }, { status: 400 });
-    }
-    tileName = `${dbProduct.name}${dbProduct.dimensions ? ` (${dbProduct.dimensions})` : ''}`;
-    const img = dbProduct.images[0]?.imageUrl;
-    if (!img) {
-      return NextResponse.json({ error: 'У товара нет изображения для визуализации' }, { status: 400 });
-    }
-    tileImageUrl = img.startsWith('http') ? img : `${origin}${img}`;
-    tileKey = dbProduct.slug;
-    tileDimsRaw = dbProduct.dimensions ?? null;
-  }
-
-  // С фолбэком: даже если в каталоге размер не задан, оцениваем форму по названию/материалу,
-  // чтобы у визуализатора всегда был сигнал размера/пропорции (раскладка + масштаб).
-  const parsedDims = resolveTileSize(tileDimsRaw, tileName);
-
-  // Основной движок — gpt-image-1 (через fal): понимает сцену, перспективу, окна/двери
-  // и накладывает плитку реалистично. Рендер ~60-90с, поэтому НЕ ждём его в этом запросе
-  // (иначе прокси рвёт соединение → 504), а ставим в очередь fal и отдаём requestId.
-  // Клиент опрашивает /api/visualize/status. Включается при наличии FAL_KEY.
-  if (process.env.FAL_KEY) {
-    try {
-      // Для режима выделения параллельно запускаем EVF-SAM-сегментацию поверхности —
-      // её холодный старт (~78с) перекрывается рендером, а composite заберёт результат
-      // по segRequestId и вычтет окна/двери из выбранной зоны.
-      const [gpt, seg] = await Promise.all([
-        submitGptImageJob({
-          roomImageUrl: roomImage,
-          tileImageUrl,
-          tileName,
-          tileWmm: parsedDims?.w,
-          tileHmm: parsedDims?.h,
-          surface,
-          maskImageUrl: maskImage,
-          surfaceWidthM: body.regionWidthM,
-          surfaceHeightM: body.regionHeightM,
-          floorAreaM2: body.floorAreaM2,
-        }),
-        surface === 'mask'
-          ? submitEvfSamJob({ imageUrl: roomImage }).catch((e) => {
-              console.error('[visualize:evf-sam] submit failed (продолжим без исключения проёмов):', e);
-              return null;
-            })
-          : Promise.resolve(null),
-      ]);
-      // Лог пишем при постановке задачи — здесь весь контекст (юзер/плитка/поверхность);
-      // токены у gpt-image-1 не отдаются (usageMetadata только у Gemini), поэтому нули.
-      await logVisualization({
-        userId: user.id, tileSlug: tileKey, tileName, surface, provider: RENDER_PROVIDER_LABEL,
-      });
-      return NextResponse.json({
-        async: true,
-        requestId: gpt.requestId,
-        segRequestId: seg?.requestId ?? null,
-        provider: RENDER_PROVIDER_LABEL,
-        tile: { id: tileKey, name: tileName },
-      });
-    } catch (err) {
-      // fal — основной движок. Раньше здесь был тихий фолбэк в legacy visualize() →
-      // viaGemini, который маскировал настоящую ошибку fal чужим «429 Gemini».
-      // Теперь возвращаем реальную ошибку fal как есть, чтобы её было видно.
-      console.error('[visualize:gpt-image-1] submit failed:', err);
-      const message = err instanceof Error ? err.message : 'fal: не удалось поставить рендер в очередь';
+  if (dbProduct) {
+    tileDims = toTileDims(resolveTileSize(dbProduct.dimensions, dbProduct.name));
+    tileName = `${dbProduct.name} (${formatTileDimensions(tileDims)})`;
+    tileImageUrls = dbProduct.images.map((image) =>
+      resolveImageUrl(image.imageUrl, origin),
+    );
+    if (tileImageUrls.length === 0) {
       return NextResponse.json(
-        { error: `fal (gpt-image-1): ${message}` },
-        { status: 502 },
+        { error: 'У товара нет изображения для визуализации' },
+        { status: 400 },
       );
     }
+    tileKey = dbProduct.slug;
+    const categoryIdentity =
+      `${dbProduct.category.slug} ${dbProduct.category.name}`.toLowerCase();
+    isClinker =
+      categoryIdentity.includes('clinker') || categoryIdentity.includes('клинкер');
+  } else if (staticTile) {
+    const dimensionsMm = staticSizeToMillimeters(staticTile.size);
+    tileDims = toTileDims(resolveTileSize(dimensionsMm, staticTile.name));
+    tileName = `${staticTile.name} (${staticTile.texture}, ${formatTileDimensions(tileDims)})`;
+    tileImageUrls = [resolveImageUrl(staticTile.image, origin)];
+    tileKey = staticTile.id;
+    isClinker = staticTile.type === 'clinker';
+  } else {
+    return NextResponse.json({ error: `Unknown tile: ${tileId}` }, { status: 400 });
   }
 
-  // Реальный масштаб (старый путь — Gemini/прочие провайдеры) для surface==='mask'.
-  const scale:
-    | { tilesAcross: number; tilesDown?: number; tileWmm: number; tileHmm: number }
-    | undefined = undefined;
+  const defaultPattern: Pattern =
+    surface === 'facade' || isClinker ? 'offset-half' : 'stack';
+  const pattern = requestedPattern ?? defaultPattern;
+  const settings = {
+    pattern,
+    orientation,
+    grout,
+    note: note ?? '',
+    ...(surface === 'facade' ? { zones, baseColor } : {}),
+  };
+  const hasDefaultSettings =
+    pattern === defaultPattern &&
+    orientation === 'horizontal' &&
+    grout === 'match' &&
+    !note &&
+    (surface !== 'facade' ||
+      (zones.length === 1 && zones[0] === 'full' && baseColor === 'white'));
 
-  // Для floor/wall числа плиток не считаем, но реальные размеры плитки передаём.
-  const tileDims =
-    surface !== 'mask' && parsedDims ? { wmm: parsedDims.w, hmm: parsedDims.h } : undefined;
-
-  // Маска уникальна на каждый запрос — кэш демо-сцен здесь не применим.
-  const cachedProvider = provider || 'auto';
   const cached =
-    surface === 'mask'
-      ? null
-      : await lookupCache({
+    surface !== 'mask' && hasDefaultSettings
+      ? await lookupCache({
           roomImage,
           tileId: tileKey,
           surface,
-          provider: cachedProvider,
-        });
+          provider: provider || 'auto',
+        })
+      : null;
   if (cached) {
-    await logVisualization({ userId: user.id, tileSlug: tileKey, tileName, surface, provider: 'cache' });
+    await logVisualization({
+      userId: user.id,
+      tileSlug: tileKey,
+      tileName,
+      surface,
+      provider: 'cache',
+    });
     return NextResponse.json({
       imageUrl: cached.startsWith('http') ? cached : `${origin}${cached}`,
       durationMs: 0,
       provider: 'cache',
       tile: { id: tileKey, name: tileName },
+      settings,
     });
   }
 
-  try {
-    const result = await visualize({
-      roomImageUrl: roomImage,
-      tileImageUrl,
-      tileName,
-      surface,
-      maskImageUrl: maskImage,
-      scale,
-      tileDims,
-      provider,
-    });
+  const widthM = positiveNumber(body.regionWidthM);
+  const heightM = positiveNumber(body.regionHeightM);
+  const floorAreaM2 = positiveNumber(body.floorAreaM2);
+  const horizontalTileMm =
+    orientation === 'vertical' ? tileDims.hmm : tileDims.wmm;
+  const verticalTileMm =
+    orientation === 'vertical' ? tileDims.wmm : tileDims.hmm;
+  const scale =
+    surface !== 'floor' && widthM
+      ? {
+          tilesAcross: countTilesAcross(widthM, horizontalTileMm),
+          ...(heightM ? { tilesDown: countTilesDown(heightM, verticalTileMm) } : {}),
+          tileWmm: tileDims.wmm,
+          tileHmm: tileDims.hmm,
+        }
+      : undefined;
+  const visualizeInput: VisualizeInput = {
+    roomImageUrl: roomImage,
+    tileImageUrls,
+    tileName,
+    tileDims,
+    surface,
+    maskImageUrl: maskImage,
+    scale,
+    floorAreaM2: surface === 'floor' ? floorAreaM2 : undefined,
+    pattern,
+    orientation,
+    grout,
+    ...(surface === 'facade' ? { zones, baseColor } : {}),
+    note,
+    provider,
+  };
 
+  const useAsyncFal =
+    Boolean(process.env.FAL_KEY) &&
+    provider !== 'mock' &&
+    process.env.AI_PROVIDER !== 'mock';
+  if (useAsyncFal) {
+    try {
+      const [renderJob, segmentationJob] = await Promise.all([
+        submitGptImageJob(visualizeInput),
+        surface === 'mask'
+          ? submitEvfSamJob({ imageUrl: roomImage }).catch((err) => {
+              console.error(
+                '[visualize:evf-sam] submit failed; продолжим без исключения проёмов:',
+                err,
+              );
+              return null;
+            })
+          : Promise.resolve(null),
+      ]);
+      await logVisualization({
+        userId: user.id,
+        tileSlug: tileKey,
+        tileName,
+        surface,
+        provider: RENDER_PROVIDER_LABEL,
+      });
+      return NextResponse.json({
+        async: true,
+        requestId: renderJob.requestId,
+        segRequestId: segmentationJob?.requestId ?? null,
+        provider: RENDER_PROVIDER_LABEL,
+        tile: { id: tileKey, name: tileName },
+        settings,
+      });
+    } catch (err) {
+      console.error('[visualize:nano-banana] submit failed:', err);
+      const message =
+        err instanceof Error ? err.message : 'не удалось поставить рендер в очередь';
+      return NextResponse.json(
+        { error: `fal (nano-banana-pro/edit): ${message}` },
+        { status: 502 },
+      );
+    }
+  }
+
+  try {
+    const result = await visualize(visualizeInput);
     await logVisualization({
       userId: user.id,
       tileSlug: tileKey,
@@ -221,12 +321,12 @@ export async function POST(req: Request) {
       outputTokens: result.usage?.outputTokens ?? 0,
       totalTokens: result.usage?.totalTokens ?? 0,
     });
-
     return NextResponse.json({
       imageUrl: result.imageUrl,
       durationMs: result.durationMs,
       provider: result.provider,
       tile: { id: tileKey, name: tileName },
+      settings,
     });
   } catch (err) {
     console.error('[visualize]', err);
@@ -235,12 +335,74 @@ export async function POST(req: Request) {
   }
 }
 
-// Пишем лог визуализации. Ошибка лога не должна ломать ответ пользователю.
+function normalizeFacadeZones(value: unknown): FacadeZone[] {
+  const validZones = Array.isArray(value)
+    ? value.filter(
+        (zone): zone is FacadeZone =>
+          typeof zone === 'string' && FACADE_ZONES.includes(zone as FacadeZone),
+      )
+    : [];
+  const uniqueZones = [...new Set(validZones)];
+  if (uniqueZones.includes('full')) return ['full'];
+  return uniqueZones.length > 0 ? uniqueZones : ['full'];
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  const number =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value.replace(',', '.'))
+        : Number.NaN;
+  return Number.isFinite(number) && number > 0 ? number : undefined;
+}
+
+function resolveImageUrl(url: string, origin: string): string {
+  if (url.startsWith('data:')) return url;
+  return new URL(url, origin).toString();
+}
+
+function staticSizeToMillimeters(size: string): string {
+  return size.replace(/\d+(?:[.,]\d+)?/g, (value) => {
+    const millimeters = Number(value.replace(',', '.')) * 10;
+    return String(millimeters);
+  });
+}
+
+function toTileDims(size: { w: number; h: number }): { wmm: number; hmm: number } {
+  return { wmm: size.w, hmm: size.h };
+}
+
+function formatTileDimensions(tileDims: { wmm: number; hmm: number }): string {
+  return `${tileDims.wmm}×${tileDims.hmm} mm`;
+}
+
+async function checkMonthlyGenerationBudget(): Promise<NextResponse | null> {
+  const settings = await prisma.siteSettings.findUnique({
+    where: { id: 'default' },
+    select: { aiTokenBudget: true },
+  });
+  const budget = settings?.aiTokenBudget;
+  // Значения >1000 принадлежат старому токенному масштабу.
+  if (budget == null || budget < 1 || budget > 1000) return null;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthCount = await prisma.visualizationLog.count({
+    where: { createdAt: { gte: monthStart } },
+  });
+  if (monthCount < budget) return null;
+  return NextResponse.json(
+    { error: 'Месячный лимит AI-генераций исчерпан. Обратитесь к администратору.' },
+    { status: 429 },
+  );
+}
+
 async function logVisualization(data: {
   userId: string;
   tileSlug: string;
   tileName: string;
-  surface: 'floor' | 'wall' | 'mask';
+  surface: Surface;
   provider: string;
   promptTokens?: number;
   outputTokens?: number;
@@ -266,22 +428,12 @@ async function logVisualization(data: {
 }
 
 export async function GET() {
-  // Возвращаем список провайдеров и какие из них настроены (имеется ключ)
   return NextResponse.json({
     providers: {
-      fal: !!process.env.FAL_KEY,
-      replicate: !!process.env.REPLICATE_API_TOKEN,
-      gemini: !!(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY),
+      fal: Boolean(process.env.FAL_KEY),
       mock: true,
     },
     default:
-      process.env.AI_PROVIDER ||
-      (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
-        ? 'gemini'
-        : process.env.FAL_KEY
-          ? 'fal'
-          : process.env.REPLICATE_API_TOKEN
-            ? 'replicate'
-            : 'mock'),
+      process.env.AI_PROVIDER === 'mock' || !process.env.FAL_KEY ? 'mock' : 'fal',
   });
 }

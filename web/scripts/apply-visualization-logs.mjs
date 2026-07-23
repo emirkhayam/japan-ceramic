@@ -16,7 +16,7 @@ const statements = [
      "tileSlug" TEXT,
      "tileName" TEXT,
      "surface" TEXT,
-     "provider" TEXT NOT NULL DEFAULT 'gemini',
+     "provider" TEXT NOT NULL DEFAULT 'fal',
      "promptTokens" INTEGER NOT NULL DEFAULT 0,
      "outputTokens" INTEGER NOT NULL DEFAULT 0,
      "totalTokens" INTEGER NOT NULL DEFAULT 0,
