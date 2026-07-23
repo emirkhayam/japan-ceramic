@@ -112,9 +112,11 @@ export async function POST(req: Request) {
   const requestedPattern = PATTERNS.includes(body.pattern as Pattern)
     ? (body.pattern as Pattern)
     : undefined;
-  const orientation: Orientation = ORIENTATIONS.includes(body.orientation as Orientation)
+  const requestedOrientation = ORIENTATIONS.includes(
+    body.orientation as Orientation,
+  )
     ? (body.orientation as Orientation)
-    : 'horizontal';
+    : undefined;
   const grout: Grout = GROUTS.includes(body.grout as Grout)
     ? (body.grout as Grout)
     : 'match';
@@ -191,6 +193,9 @@ export async function POST(req: Request) {
   const defaultPattern: Pattern =
     surface === 'facade' || isClinker ? 'offset-half' : 'stack';
   const pattern = requestedPattern ?? defaultPattern;
+  const defaultOrientation: Orientation =
+    tileDims.hmm > tileDims.wmm ? 'vertical' : 'horizontal';
+  const orientation = requestedOrientation ?? defaultOrientation;
   const settings = {
     pattern,
     orientation,
@@ -200,7 +205,7 @@ export async function POST(req: Request) {
   };
   const hasDefaultSettings =
     pattern === defaultPattern &&
-    orientation === 'horizontal' &&
+    orientation === defaultOrientation &&
     grout === 'match' &&
     !note &&
     (surface !== 'facade' ||

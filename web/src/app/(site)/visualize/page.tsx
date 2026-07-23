@@ -9,6 +9,7 @@ import {
   Camera,
   Check,
   Download,
+  Info,
   Layers,
   MessageCircle,
   RefreshCw,
@@ -463,22 +464,58 @@ function VisualizePageInner() {
         </button>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-          <div className="card overflow-hidden">
-            <div className="relative flex w-full justify-center bg-ink-900">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={resultUrl}
-                alt="Результат визуализации"
-                className="block h-auto max-h-[78vh] w-auto max-w-full object-contain"
-              />
-              <div className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-gold-500 px-3 py-1 text-xs font-semibold text-ink-900">
-                <Sparkles size={12} /> ИИ-визуализация
-              </div>
-              {resultMeta && resultMeta.durationMs > 0 && (
-                <div className="absolute right-4 top-4 rounded-full bg-ink-900/80 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-mist-200 backdrop-blur">
-                  {(resultMeta.durationMs / 1000).toFixed(0)}s
+          <div className="space-y-3">
+            <div className="card overflow-hidden">
+              <div className="relative flex w-full justify-center bg-ink-900">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resultUrl}
+                  alt="Результат визуализации"
+                  className="block h-auto max-h-[78vh] w-auto max-w-full object-contain"
+                />
+                <div className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-gold-500 px-3 py-1 text-xs font-semibold text-ink-900">
+                  <Sparkles size={12} /> ИИ-визуализация
                 </div>
-              )}
+                {resultMeta && resultMeta.durationMs > 0 && (
+                  <div className="absolute right-4 top-4 rounded-full bg-ink-900/80 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-mist-200 backdrop-blur">
+                    {(resultMeta.durationMs / 1000).toFixed(0)}s
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-white/[.02] p-3 text-[13px] leading-relaxed text-mist-400">
+              <Info size={16} className="mt-0.5 shrink-0 text-gold-400" />
+              <div className="space-y-1.5">
+                <p>
+                  Визуализация создана ИИ и носит ориентировочный характер: реальные
+                  цвет, фактура, масштаб и укладка могут немного отличаться. Сверяйтесь
+                  с физическим образцом в шоуруме.
+                </p>
+                <p>
+                  Нужна точная визуализация под ваш проект? Напишите нам —{' '}
+                  {(() => {
+                    const whatsapp = waLink(contacts?.whatsapp);
+                    const text = encodeURIComponent(
+                      'Здравствуйте! Нужна точная визуализация проекта с плиткой ' +
+                        selectedTile?.name,
+                    );
+                    const href = whatsapp
+                      ? `${whatsapp}${whatsapp.includes('?') ? '&' : '?'}text=${text}`
+                      : '/#contacts';
+                    return (
+                      <a
+                        href={href}
+                        target={whatsapp ? '_blank' : undefined}
+                        rel={whatsapp ? 'noopener' : undefined}
+                        className="text-gold-400 hover:underline"
+                      >
+                        {whatsapp ? 'WhatsApp' : 'свяжитесь с нами'}
+                      </a>
+                    );
+                  })()}
+                </p>
+              </div>
             </div>
           </div>
 
