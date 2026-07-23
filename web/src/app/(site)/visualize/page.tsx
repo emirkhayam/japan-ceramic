@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import type { FacadeBaseColor, FacadeZone, Surface } from '@/lib/ai';
 
 // Локальный (client-safe) аналог waHref — не импортируем из lib/settings,
 // т.к. тот модуль тянет prisma (server-only).
@@ -26,7 +27,6 @@ function waLink(wa: string | null | undefined): string | null {
   return wa.startsWith("http") ? wa : `https://wa.me/${wa.replace(/[^\d]/g, "")}`;
 }
 
-type Surface = 'floor' | 'wall';
 type Stage = 'idle' | 'generating' | 'result' | 'error';
 type Pattern = 'stack' | 'offset-half' | 'offset-third' | 'herringbone';
 type Orientation = 'horizontal' | 'vertical';
@@ -35,6 +35,8 @@ type RefinementSettings = {
   pattern: Pattern;
   orientation: Orientation;
   grout: Grout;
+  zones: FacadeZone[];
+  baseColor: FacadeBaseColor;
   note: string;
 };
 
@@ -42,8 +44,31 @@ const DEFAULT_REFINEMENT_SETTINGS: RefinementSettings = {
   pattern: 'stack',
   orientation: 'horizontal',
   grout: 'match',
+  zones: ['full'],
+  baseColor: 'white',
   note: '',
 };
+
+const SURFACE_OPTIONS: { value: Surface; label: string }[] = [
+  { value: 'floor', label: 'Пол' },
+  { value: 'wall', label: 'Стена' },
+  { value: 'facade', label: 'Фасад' },
+];
+
+const FACADE_ZONE_OPTIONS: { value: FacadeZone; label: string }[] = [
+  { value: 'full', label: 'Весь фасад' },
+  { value: 'between-windows', label: 'Между окнами' },
+  { value: 'around-windows', label: 'Вокруг окон' },
+  { value: 'corners', label: 'Углы' },
+  { value: 'plinth', label: 'Цоколь' },
+  { value: 'columns', label: 'Колонны/тумбы' },
+];
+
+const FACADE_BASE_COLOR_OPTIONS: { value: FacadeBaseColor; label: string }[] = [
+  { value: 'white', label: 'Белый' },
+  { value: 'beige', label: 'Бежевый' },
+  { value: 'grey', label: 'Серый' },
+];
 
 const PATTERN_OPTIONS: { value: Pattern; label: string }[] = [
   { value: 'stack', label: 'Стек' },
@@ -78,6 +103,10 @@ function VisualizePageInner() {
   const [pattern, setPattern] = useState<Pattern>(DEFAULT_REFINEMENT_SETTINGS.pattern);
   const [orientation, setOrientation] = useState<Orientation>(DEFAULT_REFINEMENT_SETTINGS.orientation);
   const [grout, setGrout] = useState<Grout>(DEFAULT_REFINEMENT_SETTINGS.grout);
+  const [zones, setZones] = useState<FacadeZone[]>(DEFAULT_REFINEMENT_SETTINGS.zones);
+  const [baseColor, setBaseColor] = useState<FacadeBaseColor>(
+    DEFAULT_REFINEMENT_SETTINGS.baseColor,
+  );
   const [note, setNote] = useState(DEFAULT_REFINEMENT_SETTINGS.note);
 
   // Pre-select tile from URL param
@@ -115,6 +144,8 @@ function VisualizePageInner() {
           tileId: tile.slug,
           surface,
           ...refinements,
+          zones: refinements?.zones ?? zones,
+          baseColor: refinements?.baseColor ?? baseColor,
         }),
       });
       if (!res.ok) {
@@ -128,6 +159,16 @@ function VisualizePageInner() {
         setPattern(data.settings.pattern);
         setOrientation(data.settings.orientation);
         setGrout(data.settings.grout);
+        if (Array.isArray(data.settings.zones) && data.settings.zones.length > 0) {
+          setZones(data.settings.zones as FacadeZone[]);
+        }
+        if (
+          FACADE_BASE_COLOR_OPTIONS.some(
+            (option) => option.value === data.settings.baseColor,
+          )
+        ) {
+          setBaseColor(data.settings.baseColor as FacadeBaseColor);
+        }
         setNote(data.settings.note);
       }
       setStage('result');
@@ -151,18 +192,51 @@ function VisualizePageInner() {
     setPattern(DEFAULT_REFINEMENT_SETTINGS.pattern);
     setOrientation(DEFAULT_REFINEMENT_SETTINGS.orientation);
     setGrout(DEFAULT_REFINEMENT_SETTINGS.grout);
+    setZones(DEFAULT_REFINEMENT_SETTINGS.zones);
+    setBaseColor(DEFAULT_REFINEMENT_SETTINGS.baseColor);
     setNote(DEFAULT_REFINEMENT_SETTINGS.note);
   }
 
   function handleSwapTile(tile: CatalogTile) {
     setSelectedTile(tile);
-    generateFor(tile, { pattern, orientation, grout, note });
+    generateFor(tile, { pattern, orientation, grout, zones, baseColor, note });
   }
 
   function handleRefine() {
     if (!selectedTile) return;
-    generateFor(selectedTile, { pattern, orientation, grout, note });
+    generateFor(selectedTile, { pattern, orientation, grout, zones, baseColor, note });
   }
+
+  function toggleFacadeZone(zone: FacadeZone) {
+    setZones((current) => {
+      if (zone === 'full') return ['full'];
+
+      const partialZones = current.filter((currentZone) => currentZone !== 'full');
+      if (partialZones.includes(zone)) {
+        const nextZones = partialZones.filter((currentZone) => currentZone !== zone);
+        return nextZones.length > 0 ? nextZones : ['full'];
+      }
+      return [...partialZones, zone];
+    });
+  }
+
+  const facadeIsPartial = surface === 'facade' && !zones.includes('full');
+  const photoTips =
+    surface === 'facade'
+      ? [
+          'Снимайте дом целиком — прямо или под небольшим углом',
+          'Оставьте в кадре весь фасад, включая линию крыши',
+          'Фотографируйте при ровном дневном свете',
+          'Держите камеру ровно, без сильного наклона и искажения перспективы',
+        ]
+      : [
+          'Снимайте при дневном свете, без вспышки',
+          'Держите камеру ровно, лицом к стене или полу',
+          'Захватите поверхность целиком, без сильного наклона',
+          'Уберите лишние предметы с пола или стены',
+          'Следите за резкостью — без размытия и пересветов',
+          'Чем выше разрешение, тем точнее результат',
+        ];
 
   if (stage === 'generating') {
     return (
@@ -261,6 +335,58 @@ function VisualizePageInner() {
               </div>
 
               <div className="mt-4 space-y-4">
+                {surface === 'facade' && (
+                  <>
+                    <div>
+                      <div className="mb-2 text-xs font-medium text-mist-300">
+                        Зоны облицовки
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {FACADE_ZONE_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => toggleFacadeZone(option.value)}
+                            className={cn(
+                              'rounded-lg border px-2.5 py-2 text-xs font-medium transition cursor-pointer',
+                              zones.includes(option.value)
+                                ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                                : 'border-white/10 text-mist-400 hover:border-white/30',
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {facadeIsPartial && (
+                      <div>
+                        <div className="mb-2 text-xs font-medium text-mist-300">
+                          Цвет основного фасада
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {FACADE_BASE_COLOR_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => setBaseColor(option.value)}
+                              className={cn(
+                                'rounded-lg border px-2 py-2 text-xs font-medium transition cursor-pointer',
+                                baseColor === option.value
+                                  ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                                  : 'border-white/10 text-mist-400 hover:border-white/30',
+                              )}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
                 <div>
                   <div className="mb-2 text-xs font-medium text-mist-300">Схема укладки</div>
                   <div className="grid grid-cols-2 gap-2">
@@ -423,14 +549,7 @@ function VisualizePageInner() {
               <Camera size={16} /> Как сфотографировать
             </h2>
             <ul className="space-y-2.5 text-sm text-mist-300">
-              {[
-                'Снимайте при дневном свете, без вспышки',
-                'Держите камеру ровно, лицом к стене или полу',
-                'Захватите поверхность целиком, без сильного наклона',
-                'Уберите лишние предметы с пола или стены',
-                'Следите за резкостью — без размытия и пересветов',
-                'Чем выше разрешение, тем точнее результат',
-              ].map((tip) => (
+              {photoTips.map((tip) => (
                 <li key={tip} className="flex items-start gap-2.5">
                   <Check size={16} className="mt-0.5 shrink-0 text-gold-400" />
                   <span>{tip}</span>
@@ -444,22 +563,75 @@ function VisualizePageInner() {
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
                 Поверхность
               </h2>
-              <div className="grid grid-cols-2 gap-2">
-                {(['floor', 'wall'] as const).map((s) => (
+              <div className="grid grid-cols-3 gap-2">
+                {SURFACE_OPTIONS.map((option) => (
                   <button
-                    key={s}
-                    onClick={() => setSurface(s)}
+                    key={option.value}
+                    type="button"
+                    onClick={() => setSurface(option.value)}
                     className={cn(
                       'rounded-xl border px-4 py-3 text-sm font-medium transition cursor-pointer',
-                      surface === s
+                      surface === option.value
                         ? 'border-gold-500 bg-gold-500/10 text-gold-400'
                         : 'border-white/10 text-mist-400 hover:border-white/30',
                     )}
                   >
-                    {s === 'floor' ? 'Пол' : 'Стена'}
+                    {option.label}
                   </button>
                 ))}
               </div>
+
+              {surface === 'facade' && (
+                <div className="mt-5 space-y-5">
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
+                      Зоны облицовки
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {FACADE_ZONE_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => toggleFacadeZone(option.value)}
+                          className={cn(
+                            'rounded-xl border px-3 py-2 text-sm font-medium transition cursor-pointer',
+                            zones.includes(option.value)
+                              ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                              : 'border-white/10 text-mist-400 hover:border-white/30',
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {facadeIsPartial && (
+                    <div>
+                      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
+                        Цвет основного фасада
+                      </h3>
+                      <div className="grid grid-cols-3 gap-2">
+                        {FACADE_BASE_COLOR_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setBaseColor(option.value)}
+                            className={cn(
+                              'rounded-xl border px-3 py-2 text-sm font-medium transition cursor-pointer',
+                              baseColor === option.value
+                                ? 'border-gold-500 bg-gold-500/10 text-gold-400'
+                                : 'border-white/10 text-mist-400 hover:border-white/30',
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           )}
 

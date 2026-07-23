@@ -8,3 +8,4 @@ next-env.d.ts
 !web/public/hero-video.mp4
 .vercel
 .playwright-mcp/
+_refs/

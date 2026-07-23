@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server';
 import { getTileById } from '@/lib/tiles';
 import {
   visualize,
+  type FacadeBaseColor,
+  type FacadeZone,
   type Grout,
   type Orientation,
   type Pattern,
   type Provider,
+  type Surface,
 } from '@/lib/ai';
 import { lookupCache } from '@/lib/demo-cache';
 import { getSession } from '@/lib/auth';
@@ -22,12 +25,23 @@ type Body = {
   pattern?: unknown;
   orientation?: unknown;
   grout?: unknown;
+  zones?: unknown;
+  baseColor?: unknown;
   note?: unknown;
 };
 
 const PATTERNS: Pattern[] = ['stack', 'offset-half', 'offset-third', 'herringbone'];
 const ORIENTATIONS: Orientation[] = ['horizontal', 'vertical'];
 const GROUTS: Grout[] = ['match', 'contrast', 'minimal'];
+const FACADE_ZONES: FacadeZone[] = [
+  'full',
+  'between-windows',
+  'around-windows',
+  'corners',
+  'plinth',
+  'columns',
+];
+const FACADE_BASE_COLORS: FacadeBaseColor[] = ['white', 'beige', 'grey'];
 
 export async function POST(req: Request) {
   const user = await getSession();
@@ -54,7 +68,10 @@ export async function POST(req: Request) {
 
   const roomImage = typeof body.roomImage === 'string' ? body.roomImage : '';
   const tileId = typeof body.tileId === 'string' ? body.tileId : '';
-  const surface = body.surface === 'floor' || body.surface === 'wall' ? body.surface : null;
+  const surface: Surface | null =
+    body.surface === 'floor' || body.surface === 'wall' || body.surface === 'facade'
+      ? body.surface
+      : null;
   const provider: Provider | undefined =
     body.provider === 'fal' || body.provider === 'mock' ? body.provider : undefined;
   const requestedPattern = PATTERNS.includes(body.pattern as Pattern)
@@ -66,6 +83,23 @@ export async function POST(req: Request) {
   const grout: Grout = GROUTS.includes(body.grout as Grout)
     ? (body.grout as Grout)
     : 'match';
+  const validZones = Array.isArray(body.zones)
+    ? body.zones.filter(
+        (zone): zone is FacadeZone =>
+          typeof zone === 'string' && FACADE_ZONES.includes(zone as FacadeZone),
+      )
+    : [];
+  const uniqueZones = [...new Set(validZones)];
+  const zones: FacadeZone[] = uniqueZones.includes('full')
+    ? ['full']
+    : uniqueZones.length > 0
+      ? uniqueZones
+      : ['full'];
+  const baseColor: FacadeBaseColor = FACADE_BASE_COLORS.includes(
+    body.baseColor as FacadeBaseColor,
+  )
+    ? (body.baseColor as FacadeBaseColor)
+    : 'white';
   const note =
     typeof body.note === 'string' ? body.note.trim().slice(0, 300) || undefined : undefined;
   if (!roomImage || !tileId || !surface) {
@@ -116,14 +150,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Unknown tile: ${tileId}` }, { status: 400 });
   }
 
-  const defaultPattern: Pattern = isClinker ? 'offset-half' : 'stack';
+  const defaultPattern: Pattern = surface === 'facade' || isClinker ? 'offset-half' : 'stack';
   const pattern = requestedPattern ?? defaultPattern;
-  const settings = { pattern, orientation, grout, note: note ?? '' };
+  const settings = {
+    pattern,
+    orientation,
+    grout,
+    note: note ?? '',
+    ...(surface === 'facade' ? { zones, baseColor } : {}),
+  };
   const hasDefaultSettings =
     pattern === defaultPattern &&
     orientation === 'horizontal' &&
     grout === 'match' &&
-    !note;
+    !note &&
+    (surface !== 'facade' ||
+      (zones.length === 1 && zones[0] === 'full' && baseColor === 'white'));
 
   // Демо-кэш сидится строго под сентинелом 'auto', а не под фактическим провайдером по умолчанию.
   const cachedProvider = provider || 'auto';
@@ -158,6 +200,7 @@ export async function POST(req: Request) {
       pattern,
       orientation,
       grout,
+      ...(surface === 'facade' ? { zones, baseColor } : {}),
       note,
       provider,
     });
@@ -233,7 +276,7 @@ async function logVisualization(data: {
   userId: string;
   tileSlug: string;
   tileName: string;
-  surface: 'floor' | 'wall';
+  surface: Surface;
   provider: string;
   promptTokens?: number;
   outputTokens?: number;
