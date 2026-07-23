@@ -76,15 +76,30 @@ export async function generateMetadata({
   const slug = decodeURIComponent(rawSlug);
   const product = await prisma.product.findFirst({
     where: { slug, isActive: true },
-    select: { name: true, description: true, color: true, surface: true, category: { select: { name: true } } },
+    select: {
+      name: true,
+      description: true,
+      color: true,
+      surface: true,
+      category: { select: { name: true } },
+      images: { orderBy: { sortOrder: "asc" }, take: 1, select: { imageUrl: true } },
+    },
   });
-  if (!product) return { title: "Товар не найден — Japan Ceramic" };
+  if (!product) return { title: "Товар не найден" };
   const descParts = [product.category?.name, product.surface, product.color].filter(Boolean);
+  const description =
+    product.description ||
+    `${product.name}${descParts.length ? ` — ${descParts.join(", ")}` : ""}. Премиальный керамогранит Japan Ceramic.`;
+  const image = product.images[0]?.imageUrl;
   return {
     title: `${product.name} — Japan Ceramic`,
-    description:
-      product.description ||
-      `${product.name}${descParts.length ? ` — ${descParts.join(", ")}` : ""}. Премиальный керамогранит Japan Ceramic.`,
+    description,
+    alternates: { canonical: `/catalog/${slug}` },
+    openGraph: {
+      title: product.name,
+      description,
+      ...(image ? { images: [{ url: image, alt: product.name }] } : {}),
+    },
   };
 }
 

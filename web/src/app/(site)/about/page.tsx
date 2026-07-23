@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 
 export const metadata = {
   title: "О компании — Japan Ceramic",
+  alternates: { canonical: "/about" },
   description: "Japan Ceramic — поставщик премиального керамогранита, клинкера и мозаики из Японии.",
 };
 

@@ -1,9 +1,14 @@
+import type { Metadata } from "next";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getSiteSettings, telHref, waHref, tgHref, resolveMapEmbed } from "@/lib/settings";
 import LandingContent from "@/components/landing/LandingContent";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 export default async function LandingPage() {
   const user = await getSession();

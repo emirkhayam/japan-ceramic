@@ -3,6 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Политика конфиденциальности — Japan Ceramic",
+  alternates: { canonical: "/privacy" },
   description: "Как Japan Ceramic обрабатывает персональные данные посетителей сайта.",
 };
 

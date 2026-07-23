@@ -12,6 +12,7 @@ import { TileCalculator } from "@/components/designers/TileCalculator";
 
 export const metadata: Metadata = {
   title: "Дизайнерам и архитекторам — Japan Ceramic",
+  alternates: { canonical: "/designers" },
   description:
     "Зарегистрируйтесь и получите доступ к библиотеке Japan Ceramic: студийные фото, бесшовные 3D-текстуры, спецификации и AI-визуализация материала на фото вашего объекта.",
 };

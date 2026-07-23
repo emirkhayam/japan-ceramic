@@ -11,6 +11,13 @@ import FormatMiniPreview from "@/components/FormatMiniPreview";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "Каталог керамогранита и клинкера",
+  description:
+    "Каталог Japan Ceramic: керамогранит, клинкерная плитка и мозаика с фильтрами по формату, цвету и поверхности. Примерка любой плитки в AI-визуализаторе.",
+  alternates: { canonical: "/catalog" },
+};
+
 type SP = { category?: string; q?: string; format?: string; surface?: string; color?: string; sort?: string; view?: string; page?: string };
 
 const PER_PAGE = 24;

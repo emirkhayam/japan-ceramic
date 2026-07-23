@@ -3,6 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Пользовательское соглашение — Japan Ceramic",
+  alternates: { canonical: "/terms" },
   description: "Условия использования сайта Japan Ceramic.",
 };
 
