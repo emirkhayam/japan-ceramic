@@ -92,7 +92,7 @@ export async function generateMetadata({
     `${product.name}${descParts.length ? ` — ${descParts.join(", ")}` : ""}. Премиальный керамогранит Japan Ceramic.`;
   const image = product.images[0]?.imageUrl;
   return {
-    title: `${product.name} — Japan Ceramic`,
+    title: product.name,
     description,
     alternates: { canonical: `/catalog/${slug}` },
     openGraph: {
