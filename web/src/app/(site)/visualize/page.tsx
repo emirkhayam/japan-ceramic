@@ -144,8 +144,13 @@ function VisualizePageInner() {
           tileId: tile.slug,
           surface,
           ...refinements,
-          zones: refinements?.zones ?? zones,
-          baseColor: refinements?.baseColor ?? baseColor,
+          // Зоны и цвет штукатурки имеют смысл только для фасада — для пола/стены не шлём.
+          ...(surface === 'facade'
+            ? {
+                zones: refinements?.zones ?? zones,
+                baseColor: refinements?.baseColor ?? baseColor,
+              }
+            : { zones: undefined, baseColor: undefined }),
         }),
       });
       if (!res.ok) {
@@ -189,11 +194,9 @@ function VisualizePageInner() {
     setResultUrl(null);
     setResultMeta(null);
     setErrorMsg(null);
-    setPattern(DEFAULT_REFINEMENT_SETTINGS.pattern);
-    setOrientation(DEFAULT_REFINEMENT_SETTINGS.orientation);
-    setGrout(DEFAULT_REFINEMENT_SETTINGS.grout);
-    setZones(DEFAULT_REFINEMENT_SETTINGS.zones);
-    setBaseColor(DEFAULT_REFINEMENT_SETTINGS.baseColor);
+    // Фото, плитка, поверхность и настройки укладки/зон переживают возврат —
+    // пользователь чаще всего возвращается сменить фото того же объекта.
+    // Одноразовое пожелание из «Что поправить?» очищаем.
     setNote(DEFAULT_REFINEMENT_SETTINGS.note);
   }
 

@@ -113,7 +113,7 @@ async function viaFal(input: VisualizeInput): Promise<ProviderOutput> {
   const tileCharacterInstruction = `TILE CHARACTER — STRICT ACCURACY:
 - Faithfully reproduce the exact color palette, texture, geometry, material character, surface relief and visual identity of the tile shown in IMAGES 2..${lastReferenceNumber}.
 - NEVER substitute a different or generic tile.
-- Fully remove the ORIGINAL ${input.surface === 'facade' ? 'material inside every selected clinker zone' : `${surfaceWord} material`}; do not keep, blend with or echo its pattern.`;
+- Fully remove the ORIGINAL ${input.surface === 'facade' ? 'surface material in every area being clad' : `${surfaceWord} material`}; do not keep, blend with or echo its pattern.`;
   const naturalVariationInstruction = `NATURAL VARIATION — FREE:
 - Real ceramic and clinker tiles vary naturally in tone, shade and relief between individual tiles. Mix the provided reference variations naturally across the surface.
 - No two adjacent tiles should look perfectly identical. Avoid all visible repetition and cloning artifacts while preserving the tile product's exact character.`;
@@ -194,7 +194,7 @@ function buildFacadePrompt({
   realWorldScaleInstruction: string;
   additionalInstruction: string;
 }): string {
-  const requestedZones: FacadeZone[] = input.zones?.length ? input.zones : ['full'];
+  const requestedZones: FacadeZone[] = [...new Set(input.zones?.length ? input.zones : ['full' as FacadeZone])];
   const zones: FacadeZone[] = requestedZones.includes('full') ? ['full'] : requestedZones;
   const baseColor = input.baseColor ?? 'white';
   const plasterInstruction: Record<FacadeBaseColor, string> = {
