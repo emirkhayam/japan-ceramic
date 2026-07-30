@@ -83,6 +83,8 @@ type NanoBananaEditInput = {
 
 const GPT_IMAGE_ENDPOINT = 'openai/gpt-image-2/edit';
 const NANO_BANANA_ENDPOINT = 'fal-ai/nano-banana-pro/edit';
+const CHAT_ENDPOINT = 'openrouter/router';
+const CHAT_MODEL = process.env.AI_CHAT_MODEL?.trim() || 'openai/gpt-5.6';
 const RENDER_MODEL: RenderModel =
   process.env.AI_RENDER_MODEL === 'nano-banana'
     ? 'nano-banana'
@@ -492,6 +494,176 @@ export type ChatVisualizeInput = {
   userMessage: string;
   tileChanged?: boolean;
 };
+
+export type ChatDecision = {
+  action: 'reply' | 'generate';
+  reply: string;
+  imagePrompt?: string;
+};
+
+export type ChatOrchestrateInput = {
+  userMessage: string;
+  history: { role: 'user' | 'assistant'; text: string }[];
+  tileName: string;
+  tileDims?: { wmm: number; hmm: number };
+  hasBaseImage: boolean;
+  tileChanged?: boolean;
+};
+
+function buildChatOrchestratorPrompt(input: ChatOrchestrateInput): string {
+  const tileDimensions = input.tileDims
+    ? ` (${input.tileDims.wmm}×${input.tileDims.hmm} мм)`
+    : '';
+  const tileChangedContext = input.tileChanged
+    ? '\n- Плитка только что СМЕНЕНА: при генерации полностью замени старую плитку в текущей сцене новой выбранной плиткой.'
+    : '';
+  const history = input.history
+    .slice(-12)
+    .map(
+      (item) =>
+        `${item.role === 'user' ? 'Клиент' : 'Ассистент'}: ${item.text}`,
+    )
+    .join('\n');
+
+  return `Ты — ассистент-визуализатор магазина плитки Japan Ceramic. Клиент примеряет плитку на фото своего помещения/фасада. Твоя задача — по диалогу решить: (a) ответить текстом (приветствие, уточнение, совет) или (b) запустить генерацию изображения.
+
+Правила:
+- Отвечай кратко и дружелюбно.
+- Уточняющий вопрос задавай ТОЛЬКО если без него нельзя сгенерировать, максимум один вопрос.
+- Если запрос понятен — сразу action=generate.
+- НИКОГДА не предлагай другую плитку вместо выбранной.
+- Если фото ещё не приложено (hasBaseImage=false) — генерировать нельзя, попроси прислать фото.
+- imagePrompt пиши как самодостаточное задание image-модели: что изменить относительно ТЕКУЩЕГО состояния сцены, сохраняя всё остальное. Помни: «тоже» и «ещё» означают добавить к уже сделанному, а не переделывать существующий результат.
+
+Контекст:
+- Выбранная плитка: ${input.tileName}${tileDimensions}.
+- Фото приложено: ${input.hasBaseImage ? 'да' : 'нет'}.${tileChangedContext}
+
+История диалога:
+${history || '(пока пусто)'}
+
+Новое сообщение клиента:
+${input.userMessage}
+
+Ответь СТРОГО одним JSON без markdown:
+{"action":"reply"|"generate","reply":"короткий ответ клиенту по-русски","imagePrompt":"задание для image-модели, только если action=generate"}`;
+}
+
+function firstJsonObject(value: string): string | null {
+  const start = value.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return value.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
+function fallbackChatDecision(input: ChatOrchestrateInput): ChatDecision {
+  return {
+    action: 'generate',
+    reply: '',
+    imagePrompt: input.userMessage,
+  };
+}
+
+function requireBaseImage(
+  decision: ChatDecision,
+  hasBaseImage: boolean,
+): ChatDecision {
+  if (decision.action !== 'generate' || hasBaseImage) return decision;
+  return {
+    action: 'reply',
+    reply: 'Пришлите фото помещения или фасада, и я запущу визуализацию.',
+  };
+}
+
+export async function chatOrchestrate(
+  input: ChatOrchestrateInput,
+): Promise<ChatDecision> {
+  const key = process.env.FAL_KEY;
+  if (!key) throw new Error('FAL_KEY не задан');
+  fal.config({ credentials: key });
+
+  const result = (await fal.subscribe(CHAT_ENDPOINT as never, {
+    input: {
+      model: CHAT_MODEL,
+      prompt: buildChatOrchestratorPrompt(input),
+    } as never,
+    logs: false,
+  })) as unknown;
+  const root =
+    result !== null && typeof result === 'object'
+      ? (result as { data?: unknown; output?: unknown })
+      : null;
+  const data =
+    root?.data !== null && typeof root?.data === 'object'
+      ? (root.data as { output?: unknown })
+      : root;
+  const output = typeof data?.output === 'string' ? data.output : '';
+  const json = firstJsonObject(output);
+
+  try {
+    if (!json) {
+      return requireBaseImage(
+        fallbackChatDecision(input),
+        input.hasBaseImage,
+      );
+    }
+    const parsed = JSON.parse(json) as {
+      action?: unknown;
+      reply?: unknown;
+      imagePrompt?: unknown;
+    };
+    if (parsed.action !== 'reply' && parsed.action !== 'generate') {
+      return requireBaseImage(
+        fallbackChatDecision(input),
+        input.hasBaseImage,
+      );
+    }
+    const reply = typeof parsed.reply === 'string' ? parsed.reply.trim() : '';
+    if (parsed.action === 'reply') {
+      return { action: 'reply', reply };
+    }
+    return requireBaseImage(
+      {
+        action: 'generate',
+        reply,
+        imagePrompt:
+          typeof parsed.imagePrompt === 'string' && parsed.imagePrompt.trim()
+            ? parsed.imagePrompt.trim()
+            : input.userMessage,
+      },
+      input.hasBaseImage,
+    );
+  } catch {
+    return requireBaseImage(
+      fallbackChatDecision(input),
+      input.hasBaseImage,
+    );
+  }
+}
 
 function buildChatPrompt(input: ChatVisualizeInput): string {
   const tileDimensions = input.tileDims

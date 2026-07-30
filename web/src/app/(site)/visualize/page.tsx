@@ -47,11 +47,17 @@ type Contacts = {
   address: string | null;
 };
 
+type ChatHistoryMessage = {
+  role: 'user' | 'assistant';
+  text: string;
+};
+
 type TurnRequest = {
-  baseImage: string;
+  baseImage?: string;
   message: string;
   tile: CatalogTile;
   tileChanged: boolean;
+  history: ChatHistoryMessage[];
 };
 
 type TurnResult = {
@@ -67,10 +73,28 @@ type ChatTurn = {
   id: string;
   request: TurnRequest;
   userImage?: string;
-  status: 'generating' | 'completed' | 'error';
+  status: 'thinking' | 'generating' | 'completed' | 'error';
+  reply?: string;
   result?: TurnResult;
   error?: string;
 };
+
+function buildThreadHistory(turns: ChatTurn[]): ChatHistoryMessage[] {
+  const history: ChatHistoryMessage[] = [];
+  for (const turn of turns) {
+    history.push({
+      role: 'user',
+      text: turn.request.message.slice(0, 600),
+    });
+    if (turn.reply?.trim()) {
+      history.push({
+        role: 'assistant',
+        text: turn.reply.trim().slice(0, 600),
+      });
+    }
+  }
+  return history.slice(-12);
+}
 
 function waLink(whatsapp: string | null | undefined): string | null {
   if (!whatsapp) return null;
@@ -125,19 +149,30 @@ function VisualizeChat() {
   const threadEndRef = useRef<HTMLDivElement>(null);
   const submissionLockRef = useRef(false);
 
-  const isGenerating = turns.some((turn) => turn.status === 'generating');
-  const lastCompletedTurn = useMemo(
-    () => [...turns].reverse().find((turn) => turn.status === 'completed'),
+  const isGenerating = turns.some(
+    (turn) => turn.status === 'thinking' || turn.status === 'generating',
+  );
+  const lastResultTurn = useMemo(
+    () => [...turns].reverse().find((turn) => turn.result),
     [turns],
   );
-  const isFirstTurn = turns.length === 0;
+  const conversationBaseImage = useMemo(() => {
+    const resultImage =
+      lastResultTurn?.result?.sourceUrl || lastResultTurn?.result?.imageUrl;
+    if (resultImage) return resultImage;
+    return (
+      [...turns]
+        .reverse()
+        .find((turn) => turn.request.baseImage)?.request.baseImage ?? null
+    );
+  }, [lastResultTurn, turns]);
+  const isEmptyThread = turns.length === 0;
   const canSend = Boolean(
     selectedTile &&
       draft.trim() &&
       draft.trim().length <= 500 &&
       !isGenerating &&
-      !normalizingImage &&
-      (isFirstTurn ? attachment : lastCompletedTurn?.result),
+      !normalizingImage,
   );
 
   useEffect(() => {
@@ -238,17 +273,50 @@ function VisualizeChat() {
           tileId: request.tile.slug,
           message: request.message,
           tileChanged: request.tileChanged,
+          history: request.history,
         }),
       });
       if (!response.ok) throw new Error(await responseError(response));
       const data = (await response.json()) as {
         async?: unknown;
         requestId?: unknown;
+        reply?: unknown;
       };
-      if (data.async !== true || typeof data.requestId !== 'string') {
+      const reply = typeof data.reply === 'string' ? data.reply.trim() : '';
+
+      if (data.async !== true) {
+        if (!reply) throw new Error('Сервер не вернул ответ ассистента');
+        setTurns((current) =>
+          current.map((turn) =>
+            turn.id === turnId
+              ? {
+                  ...turn,
+                  status: 'completed',
+                  reply,
+                  error: undefined,
+                  result: undefined,
+                }
+              : turn,
+          ),
+        );
+        return;
+      }
+      if (typeof data.requestId !== 'string') {
         throw new Error('Сервер не вернул номер задания');
       }
 
+      setTurns((current) =>
+        current.map((turn) =>
+          turn.id === turnId
+            ? {
+                ...turn,
+                status: 'generating',
+                reply: reply || undefined,
+                error: undefined,
+              }
+            : turn,
+        ),
+      );
       const result = await pollVisualization(data.requestId);
       setTurns((current) =>
         current.map((turn) =>
@@ -289,12 +357,7 @@ function VisualizeChat() {
   function sendMessage() {
     if (!canSend || submissionLockRef.current || !selectedTile) return;
     const message = draft.trim();
-    const baseImage = isFirstTurn
-      ? attachment
-      : lastCompletedTurn?.result?.sourceUrl ||
-        lastCompletedTurn?.result?.imageUrl ||
-        null;
-    if (!baseImage) return;
+    const baseImage = conversationBaseImage || attachment || undefined;
 
     submissionLockRef.current = true;
     const id = crypto.randomUUID();
@@ -303,12 +366,14 @@ function VisualizeChat() {
       message,
       tile: selectedTile,
       tileChanged: tileChangedPending,
+      history: buildThreadHistory(turns),
     };
     const turn: ChatTurn = {
       id,
       request,
-      userImage: isFirstTurn ? attachment ?? undefined : undefined,
-      status: 'generating',
+      userImage:
+        !conversationBaseImage && attachment ? attachment : undefined,
+      status: 'thinking',
     };
     setTurns((current) => [...current, turn]);
     setDraft('');
@@ -323,7 +388,12 @@ function VisualizeChat() {
     setTurns((current) =>
       current.map((item) =>
         item.id === turn.id
-          ? { ...item, status: 'generating', error: undefined }
+          ? {
+              ...item,
+              status: 'thinking',
+              reply: undefined,
+              error: undefined,
+            }
           : item,
       ),
     );
@@ -394,7 +464,7 @@ function VisualizeChat() {
   async function handleAttachment(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file || !isFirstTurn) return;
+    if (!file || conversationBaseImage) return;
     if (!file.type.startsWith('image/')) {
       setAttachmentError('Загрузите изображение в формате JPG, PNG или WebP.');
       return;
@@ -422,7 +492,7 @@ function VisualizeChat() {
   }
 
   function selectTile(tile: CatalogTile) {
-    const previousTileSlug = lastCompletedTurn?.request.tile.slug;
+    const previousTileSlug = lastResultTurn?.request.tile.slug;
     setSelectedTile(tile);
     setTileChangedPending(
       Boolean(previousTileSlug && previousTileSlug !== tile.slug),
@@ -448,16 +518,14 @@ function VisualizeChat() {
   }
 
   const sendHint = isGenerating
-    ? 'Дождитесь текущего результата'
+    ? 'Ассистент обрабатывает сообщение'
     : !selectedTile
       ? 'Сначала выберите плитку'
-      : isFirstTurn && !attachment
-        ? 'Прикрепите фото и опишите, что изменить'
+      : !conversationBaseImage && !attachment
+        ? 'Можно сначала написать — фото понадобится только для генерации'
         : !draft.trim()
-          ? 'Напишите, что сделать с выбранной плиткой'
-          : !isFirstTurn && !lastCompletedTurn
-            ? 'Повторите неудавшуюся генерацию'
-            : 'Enter — отправить · Shift+Enter — новая строка';
+          ? 'Напишите задачу или задайте вопрос о визуализации'
+          : 'Enter — отправить · Shift+Enter — новая строка';
 
   return (
     <div className="min-h-[calc(100dvh-80px)] bg-ink-900">
@@ -544,10 +612,14 @@ function VisualizeChat() {
               <div className="flex items-start gap-2.5">
                 <AssistantAvatar />
                 <div className="min-w-0 flex-1">
-                  {turn.status === 'generating' && <GeneratingBubble />}
+                  {turn.status === 'thinking' && <ThinkingBubble />}
+                  {turn.status === 'generating' && (
+                    <GeneratingBubble reply={turn.reply} />
+                  )}
                   {turn.status === 'error' && (
                     <ErrorBubble
                       message={turn.error ?? 'Генерация не удалась'}
+                      reply={turn.reply}
                       onRetry={() => retryTurn(turn)}
                     />
                   )}
@@ -559,6 +631,9 @@ function VisualizeChat() {
                       onSave={() => void saveTurn(turn)}
                     />
                   )}
+                  {turn.status === 'completed' &&
+                    !turn.result &&
+                    turn.reply && <TextReplyBubble reply={turn.reply} />}
                 </div>
               </div>
             </div>
@@ -567,7 +642,7 @@ function VisualizeChat() {
         </main>
 
         <div className="sticky bottom-0 z-20 border-t border-white/[.06] bg-ink-900/95 px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:px-6">
-          {isFirstTurn && (
+          {isEmptyThread && (
             <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
               {SUGGESTIONS.map((suggestion) => (
                 <button
@@ -585,7 +660,7 @@ function VisualizeChat() {
             </div>
           )}
 
-          {attachment && isFirstTurn && (
+          {attachment && !conversationBaseImage && (
             <div className="mb-2 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-ink-700 p-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -620,13 +695,17 @@ function VisualizeChat() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={!isFirstTurn || isGenerating || normalizingImage}
+              disabled={
+                Boolean(conversationBaseImage) ||
+                isGenerating ||
+                normalizingImage
+              }
               className="mb-0.5 inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-mist-400 transition hover:bg-white/[.06] hover:text-mist-100 disabled:cursor-not-allowed disabled:opacity-35"
               aria-label="Прикрепить фото"
               title={
-                isFirstTurn
-                  ? 'Прикрепить фото'
-                  : 'Новое фото можно прикрепить в новом чате'
+                conversationBaseImage
+                  ? 'Новое фото можно прикрепить в новом чате'
+                  : 'Прикрепить фото'
               }
             >
               {normalizingImage ? (
@@ -643,9 +722,9 @@ function VisualizeChat() {
               maxLength={500}
               rows={1}
               placeholder={
-                isFirstTurn
-                  ? 'Например: облицуй весь фасад этой плиткой'
-                  : 'Что изменить в результате?'
+                conversationBaseImage
+                  ? 'Что изменить в результате?'
+                  : 'Опишите задачу или задайте вопрос'
               }
               className="max-h-[104px] min-h-10 flex-1 resize-none bg-transparent px-1 py-2 text-sm leading-6 text-mist-100 outline-none placeholder:text-mist-400 sm:text-[15px]"
             />
@@ -767,9 +846,10 @@ function AssistantIntro({
           AI-визуализатор
         </div>
         <p className="text-sm leading-6 text-mist-200 sm:text-[15px]">
-          Пришлите фото помещения или фасада и напишите, что сделать — я примерю
-          выбранную плитку. Дальше можно править текстом: «колонны тоже облицуй»,
-          «сделай светлее»…
+          Опишите задачу или задайте вопрос. Когда будете готовы к визуализации,
+          пришлите фото помещения или фасада — я примерю выбранную плитку. Дальше
+          результат можно править текстом: «колонны тоже облицуй», «сделай
+          светлее»…
         </p>
         <p className="mt-3 border-t border-white/[.08] pt-3 text-[11px] leading-5 text-mist-400">
           Визуализация создана ИИ и носит ориентировочный характер: реальные цвет,
@@ -790,9 +870,33 @@ function AssistantIntro({
   );
 }
 
-function GeneratingBubble() {
+function ThinkingBubble() {
+  return (
+    <div className="inline-flex max-w-2xl items-center gap-2 rounded-2xl rounded-tl-md border border-white/10 bg-white/[.035] px-4 py-3 text-sm text-mist-300">
+      <RefreshCw size={15} className="animate-spin text-gold-400" />
+      Обдумываю запрос…
+    </div>
+  );
+}
+
+function TextReplyBubble({ reply }: { reply: string }) {
+  return (
+    <div className="max-w-2xl rounded-2xl rounded-tl-md border border-white/10 bg-white/[.035] px-4 py-3 sm:px-5">
+      <p className="whitespace-pre-wrap text-sm leading-6 text-mist-200 sm:text-[15px]">
+        {reply}
+      </p>
+    </div>
+  );
+}
+
+function GeneratingBubble({ reply }: { reply?: string }) {
   return (
     <div className="max-w-2xl overflow-hidden rounded-2xl rounded-tl-md border border-white/10 bg-white/[.035]">
+      {reply && (
+        <p className="whitespace-pre-wrap border-b border-white/[.08] px-4 py-3 text-sm leading-6 text-mist-200 sm:px-5 sm:text-[15px]">
+          {reply}
+        </p>
+      )}
       <div className="shimmer aspect-[4/3] w-full max-w-xl" />
       <div className="flex items-center gap-2 px-4 py-3 text-sm text-mist-300">
         <RefreshCw size={15} className="animate-spin text-gold-400" />
@@ -804,14 +908,21 @@ function GeneratingBubble() {
 
 function ErrorBubble({
   message,
+  reply,
   onRetry,
 }: {
   message: string;
+  reply?: string;
   onRetry: () => void;
 }) {
   return (
-    <div className="max-w-2xl rounded-2xl rounded-tl-md border border-red-500/25 bg-red-500/[.07] px-4 py-4">
-      <div className="flex items-start gap-2.5">
+    <div className="max-w-2xl overflow-hidden rounded-2xl rounded-tl-md border border-red-500/25 bg-red-500/[.07]">
+      {reply && (
+        <p className="whitespace-pre-wrap border-b border-red-500/20 px-4 py-3 text-sm leading-6 text-mist-200 sm:px-5 sm:text-[15px]">
+          {reply}
+        </p>
+      )}
+      <div className="flex items-start gap-2.5 px-4 py-4">
         <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-300" />
         <div>
           <p className="text-sm leading-6 text-mist-200">{message}</p>
@@ -850,6 +961,11 @@ function ResultBubble({
 
   return (
     <div className="max-w-2xl overflow-hidden rounded-2xl rounded-tl-md border border-white/10 bg-white/[.035]">
+      {turn.reply && (
+        <p className="whitespace-pre-wrap border-b border-white/[.08] px-4 py-3 text-sm leading-6 text-mist-200 sm:px-5 sm:text-[15px]">
+          {turn.reply}
+        </p>
+      )}
       <button
         type="button"
         onClick={onOpen}
