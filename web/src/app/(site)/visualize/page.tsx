@@ -528,8 +528,8 @@ function VisualizeChat() {
           : 'Enter — отправить · Shift+Enter — новая строка';
 
   return (
-    <div className="min-h-[calc(100dvh-80px)] bg-ink-900">
-      <header className="sticky top-[80px] z-30 border-b border-white/10 bg-ink-900/95 backdrop-blur-xl">
+    <div className="min-h-[calc(100dvh-var(--site-header-h))] bg-ink-900">
+      <header className="sticky top-[var(--site-header-h)] z-30 border-b border-white/10 bg-ink-900/95 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-3 py-3 sm:px-6">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-ink-700">
@@ -584,7 +584,7 @@ function VisualizeChat() {
         </div>
       </header>
 
-      <div className="mx-auto flex min-h-[calc(100dvh-160px)] max-w-4xl flex-col">
+      <div className="mx-auto flex min-h-[calc(100dvh-var(--site-header-h)-80px)] max-w-4xl flex-col">
         <main
           aria-live="polite"
           className="flex-1 space-y-7 px-3 pb-8 pt-7 sm:px-6 sm:pt-10"
