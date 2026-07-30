@@ -16,12 +16,20 @@ import {
 import { getSession } from '@/lib/auth';
 import { lookupCache } from '@/lib/demo-cache';
 import { prisma } from '@/lib/db';
+import { checkDailyLimit, checkMonthlyBudget } from '@/lib/limits';
 import {
   resolveTileSize,
   tilesAcross as countTilesAcross,
   tilesDown as countTilesDown,
 } from '@/lib/tile';
 import { getTileById } from '@/lib/tiles';
+import {
+  formatTileDimensions,
+  logVisualization,
+  resolveImageUrl,
+  staticSizeToMillimeters,
+  toTileDims,
+} from '@/lib/visualization';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -43,7 +51,6 @@ type Body = {
   note?: unknown;
 };
 
-const DAILY_VISUALIZATION_LIMIT = 5;
 const PATTERNS: Pattern[] = ['stack', 'offset-half', 'offset-third', 'herringbone'];
 const ORIENTATIONS: Orientation[] = ['horizontal', 'vertical'];
 const GROUTS: Grout[] = ['match', 'contrast', 'minimal'];
@@ -74,18 +81,9 @@ export async function POST(req: Request) {
 
   // Личный дневной лимит и глобальный месячный бюджет независимы и работают вместе.
   if (user.role !== 'admin') {
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const todayCount = await prisma.visualizationLog.count({
-      where: { userId: user.id, createdAt: { gte: dayStart } },
-    });
-    if (todayCount >= DAILY_VISUALIZATION_LIMIT) {
-      return NextResponse.json(
-        {
-          error: `Дневной лимит визуализаций исчерпан (${DAILY_VISUALIZATION_LIMIT} в день). Попробуйте завтра.`,
-        },
-        { status: 429 },
-      );
+    const dailyLimitError = await checkDailyLimit(user.id);
+    if (dailyLimitError) {
+      return NextResponse.json({ error: dailyLimitError }, { status: 429 });
     }
   }
 
@@ -142,8 +140,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const budgetResponse = await checkMonthlyGenerationBudget();
-  if (budgetResponse) return budgetResponse;
+  const monthlyBudgetError = await checkMonthlyBudget();
+  if (monthlyBudgetError) {
+    return NextResponse.json({ error: monthlyBudgetError }, { status: 429 });
+  }
 
   // Товар из БД приоритетнее статического каталога при совпадающем id/slug.
   const dbProduct = await prisma.product.findFirst({
@@ -304,11 +304,11 @@ export async function POST(req: Request) {
         settings,
       });
     } catch (err) {
-      console.error('[visualize:nano-banana] submit failed:', err);
+      console.error(`[visualize:${RENDER_PROVIDER_LABEL}] submit failed:`, err);
       const message =
         err instanceof Error ? err.message : 'не удалось поставить рендер в очередь';
       return NextResponse.json(
-        { error: `fal (nano-banana-pro/edit): ${message}` },
+        { error: `fal (${RENDER_PROVIDER_LABEL}): ${message}` },
         { status: 502 },
       );
     }
@@ -360,76 +360,6 @@ function positiveNumber(value: unknown): number | undefined {
         ? Number(value.replace(',', '.'))
         : Number.NaN;
   return Number.isFinite(number) && number > 0 ? number : undefined;
-}
-
-function resolveImageUrl(url: string, origin: string): string {
-  if (url.startsWith('data:')) return url;
-  return new URL(url, origin).toString();
-}
-
-function staticSizeToMillimeters(size: string): string {
-  return size.replace(/\d+(?:[.,]\d+)?/g, (value) => {
-    const millimeters = Number(value.replace(',', '.')) * 10;
-    return String(millimeters);
-  });
-}
-
-function toTileDims(size: { w: number; h: number }): { wmm: number; hmm: number } {
-  return { wmm: size.w, hmm: size.h };
-}
-
-function formatTileDimensions(tileDims: { wmm: number; hmm: number }): string {
-  return `${tileDims.wmm}×${tileDims.hmm} mm`;
-}
-
-async function checkMonthlyGenerationBudget(): Promise<NextResponse | null> {
-  const settings = await prisma.siteSettings.findUnique({
-    where: { id: 'default' },
-    select: { aiTokenBudget: true },
-  });
-  const budget = settings?.aiTokenBudget;
-  // Значения >1000 принадлежат старому токенному масштабу.
-  if (budget == null || budget < 1 || budget > 1000) return null;
-
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthCount = await prisma.visualizationLog.count({
-    where: { createdAt: { gte: monthStart } },
-  });
-  if (monthCount < budget) return null;
-  return NextResponse.json(
-    { error: 'Месячный лимит AI-генераций исчерпан. Обратитесь к администратору.' },
-    { status: 429 },
-  );
-}
-
-async function logVisualization(data: {
-  userId: string;
-  tileSlug: string;
-  tileName: string;
-  surface: Surface;
-  provider: string;
-  promptTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-}) {
-  try {
-    await prisma.visualizationLog.create({
-      data: {
-        userId: data.userId,
-        tileSlug: data.tileSlug,
-        tileName: data.tileName,
-        surface: data.surface,
-        provider: data.provider,
-        promptTokens: data.promptTokens ?? 0,
-        outputTokens: data.outputTokens ?? 0,
-        totalTokens: data.totalTokens ?? 0,
-        success: true,
-      },
-    });
-  } catch (err) {
-    console.error('[visualize] не удалось записать лог:', err);
-  }
 }
 
 export async function GET() {

@@ -2,7 +2,10 @@ import { prisma } from "@/lib/db";
 import AiBudgetEditor from "./AiBudgetEditor";
 
 export const dynamic = "force-dynamic";
-const PRICE_PER_IMAGE_KGS = 13.12;
+const configuredPricePerImage = Number(process.env.PRICE_PER_IMAGE_KGS);
+const PRICE_PER_IMAGE_KGS = Number.isFinite(configuredPricePerImage)
+  ? configuredPricePerImage
+  : 13.12;
 
 function fmt(n: number) {
   return n.toLocaleString("ru-RU");

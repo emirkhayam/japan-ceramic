@@ -2,65 +2,13 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/cn';
+import { normalizeImageFile } from '@/lib/image';
 import { Upload, Camera, Check, Image as ImageIcon } from 'lucide-react';
-
-type DemoRoom = {
-  id: string;
-  label: string;
-  src: string;
-};
-
-const DEMO_ROOMS: DemoRoom[] = [
-  { id: 'bathroom', label: 'Ванная', src: '/demos/room-bathroom.svg' },
-  { id: 'kitchen', label: 'Кухня', src: '/demos/room-kitchen.svg' },
-  { id: 'living', label: 'Гостиная', src: '/demos/room-living.svg' },
-];
 
 type Props = {
   value: string | null;
   onChange: (dataUrl: string | null) => void;
 };
-
-// Запасной путь (старый браузер без createImageBitmap-ориентации): сырой data URL.
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result;
-      typeof result === 'string' ? resolve(result) : reject(new Error('read failed'));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
-    reader.readAsDataURL(file);
-  });
-}
-
-// Нормализуем ориентацию фото. Телефоны пишут EXIF Orientation: браузер учитывает
-// его при показе <img>, но сырые байты уходят на fal «как лежат» → результат боком.
-// createImageBitmap({imageOrientation:'from-image'}) отдаёт уже повёрнутые пиксели —
-// впекаем поворот в canvas и пере-кодируем (заодно ужимаем гигантские снимки).
-const MAX_DIM = 2048;
-async function normalizeImage(file: File): Promise<string> {
-  let bitmap: ImageBitmap;
-  try {
-    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  } catch {
-    return fileToDataUrl(file); // HEIC/неподдерживаемый формат — отдаём как есть
-  }
-  try {
-    const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
-    const w = Math.round(bitmap.width * scale);
-    const h = Math.round(bitmap.height * scale);
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return fileToDataUrl(file);
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    return canvas.toDataURL('image/jpeg', 0.92);
-  } finally {
-    bitmap.close();
-  }
-}
 
 export function PhotoUploader({ value, onChange }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -79,7 +27,7 @@ export function PhotoUploader({ value, onChange }: Props) {
         return;
       }
       try {
-        onChange(await normalizeImage(file));
+        onChange(await normalizeImageFile(file));
       } catch {
         alert('Не удалось обработать изображение. Попробуйте другое фото.');
       }

@@ -1,28 +1,76 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState } from 'react';
+import {
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
-  ArrowLeft,
-  Brush,
-  Camera,
+  Bot,
   Check,
   Download,
-  Info,
-  Layers,
+  ImagePlus,
   MessageCircle,
+  Paperclip,
   RefreshCw,
   RotateCcw,
-  SlidersHorizontal,
+  Save,
+  Send,
   Sparkles,
+  X,
+  ZoomIn,
 } from 'lucide-react';
-import { CatalogTileSelector, type CatalogTile } from '@/components/CatalogTileSelector';
-import { MaskCanvas, type MaskCanvasHandle } from '@/components/MaskCanvas';
-import { PhotoUploader } from '@/components/PhotoUploader';
-import { VisualizerLoader } from '@/components/VisualizerLoader';
-import type { FacadeBaseColor, FacadeZone, Surface } from '@/lib/ai';
-import { cn } from '@/lib/cn';
+import {
+  CatalogTileSelector,
+  type CatalogTile,
+} from '@/components/CatalogTileSelector';
+import { normalizeImageFile } from '@/lib/image';
+
+const SUGGESTIONS = [
+  'Облицуй весь фасад этой плиткой',
+  'Клинкер между окнами, основной фасад белый',
+  'Колонны и цоколь тоже облицуй',
+  'Положи плитку на пол',
+  'На стену',
+  'Уложи вертикально',
+];
+
+type Contacts = {
+  whatsapp: string | null;
+  mapLink: string | null;
+  address: string | null;
+};
+
+type TurnRequest = {
+  baseImage: string;
+  message: string;
+  tile: CatalogTile;
+  tileChanged: boolean;
+};
+
+type TurnResult = {
+  imageUrl: string;
+  sourceUrl: string;
+  durationMs: number;
+  saving: boolean;
+  saved: boolean;
+  saveError?: string;
+};
+
+type ChatTurn = {
+  id: string;
+  request: TurnRequest;
+  userImage?: string;
+  status: 'generating' | 'completed' | 'error';
+  result?: TurnResult;
+  error?: string;
+};
 
 function waLink(whatsapp: string | null | undefined): string | null {
   if (!whatsapp) return null;
@@ -31,9 +79,13 @@ function waLink(whatsapp: string | null | undefined): string | null {
     : `https://wa.me/${whatsapp.replace(/[^\d]/g, '')}`;
 }
 
-function parsePositive(value: string): number | undefined {
-  const number = Number.parseFloat(value.replace(',', '.'));
-  return Number.isFinite(number) && number > 0 ? number : undefined;
+function waMessageLink(
+  whatsapp: string | null | undefined,
+  message: string,
+): string {
+  const base = waLink(whatsapp);
+  if (!base) return '/#contacts';
+  return `${base}${base.includes('?') ? '&' : '?'}text=${encodeURIComponent(message)}`;
 }
 
 function friendlyError(err: unknown): string {
@@ -44,108 +96,49 @@ function friendlyError(err: unknown): string {
   return raw || 'Неизвестная ошибка';
 }
 
-type Stage = 'idle' | 'generating' | 'result' | 'error';
-type Pattern = 'stack' | 'offset-half' | 'offset-third' | 'herringbone';
-type Orientation = 'horizontal' | 'vertical';
-type Grout = 'match' | 'contrast' | 'minimal';
-type RefinementSettings = {
-  pattern: Pattern;
-  orientation: Orientation;
-  grout: Grout;
-  zones: FacadeZone[];
-  baseColor: FacadeBaseColor;
-  note: string;
-};
+async function responseError(response: Response): Promise<string> {
+  const data = (await response.json().catch(() => null)) as {
+    error?: unknown;
+  } | null;
+  return typeof data?.error === 'string'
+    ? data.error
+    : `Сервер вернул ${response.status}`;
+}
 
-const DEFAULT_REFINEMENT_SETTINGS: RefinementSettings = {
-  pattern: 'stack',
-  orientation: 'horizontal',
-  grout: 'match',
-  zones: ['full'],
-  baseColor: 'white',
-  note: '',
-};
-
-const MODES: { id: Surface; label: string }[] = [
-  { id: 'mask', label: 'Выделить кистью' },
-  { id: 'floor', label: 'Пол' },
-  { id: 'wall', label: 'Стена' },
-  { id: 'facade', label: 'Фасад' },
-];
-
-const FACADE_ZONE_OPTIONS: { value: FacadeZone; label: string }[] = [
-  { value: 'full', label: 'Весь фасад' },
-  { value: 'between-windows', label: 'Между окнами' },
-  { value: 'around-windows', label: 'Вокруг окон' },
-  { value: 'corners', label: 'Углы' },
-  { value: 'plinth', label: 'Цоколь' },
-  { value: 'columns', label: 'Колонны/тумбы' },
-];
-
-const FACADE_BASE_COLOR_OPTIONS: { value: FacadeBaseColor; label: string }[] = [
-  { value: 'white', label: 'Белый' },
-  { value: 'beige', label: 'Бежевый' },
-  { value: 'grey', label: 'Серый' },
-];
-
-const PATTERN_OPTIONS: { value: Pattern; label: string }[] = [
-  { value: 'stack', label: 'Стек' },
-  { value: 'offset-half', label: 'Вразбежку ½' },
-  { value: 'offset-third', label: 'Вразбежку ⅓' },
-  { value: 'herringbone', label: 'Ёлочка' },
-];
-
-const ORIENTATION_OPTIONS: { value: Orientation; label: string }[] = [
-  { value: 'horizontal', label: 'Горизонтально' },
-  { value: 'vertical', label: 'Вертикально' },
-];
-
-const GROUT_OPTIONS: { value: Grout; label: string }[] = [
-  { value: 'match', label: 'В тон' },
-  { value: 'contrast', label: 'Контраст' },
-  { value: 'minimal', label: 'Мин. шов' },
-];
-
-function VisualizePageInner() {
+function VisualizeChat() {
   const params = useSearchParams();
   const initialSlug = params.get('tile');
-
-  const [photo, setPhoto] = useState<string | null>(null);
-  const originalPhotoRef = useRef<string | null>(null);
-  const [selectedTile, setSelectedTile] = useState<CatalogTile | null>(null);
-  const [mode, setMode] = useState<Surface>('mask');
-  const [widthM, setWidthM] = useState('');
-  const [heightM, setHeightM] = useState('');
-  const [areaM2, setAreaM2] = useState('');
-  const [layerCount, setLayerCount] = useState(1);
-  const [maskHasStrokes, setMaskHasStrokes] = useState(false);
-  const maskRef = useRef<MaskCanvasHandle>(null);
-  const lastMaskRef = useRef<string | null>(null);
-  const [stage, setStage] = useState<Stage>('idle');
-  const [resultUrl, setResultUrl] = useState<string | null>(null);
-  const [resultMeta, setResultMeta] = useState<{
-    provider: string;
-    durationMs: number;
-  } | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [contacts, setContacts] = useState<{
-    whatsapp: string | null;
-    mapLink: string | null;
-    address: string | null;
-  } | null>(null);
   const [allTiles, setAllTiles] = useState<CatalogTile[]>([]);
   const [tilesLoading, setTilesLoading] = useState(true);
-  const [pattern, setPattern] = useState<Pattern>(DEFAULT_REFINEMENT_SETTINGS.pattern);
-  const [orientation, setOrientation] = useState<Orientation>(
-    DEFAULT_REFINEMENT_SETTINGS.orientation,
+  const [selectedTile, setSelectedTile] = useState<CatalogTile | null>(null);
+  const [tilePickerOpen, setTilePickerOpen] = useState(false);
+  const [tileChangedPending, setTileChangedPending] = useState(false);
+  const [contacts, setContacts] = useState<Contacts | null>(null);
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [draft, setDraft] = useState('');
+  const [attachment, setAttachment] = useState<string | null>(null);
+  const [normalizingImage, setNormalizingImage] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const threadEndRef = useRef<HTMLDivElement>(null);
+  const submissionLockRef = useRef(false);
+
+  const isGenerating = turns.some((turn) => turn.status === 'generating');
+  const lastCompletedTurn = useMemo(
+    () => [...turns].reverse().find((turn) => turn.status === 'completed'),
+    [turns],
   );
-  const [grout, setGrout] = useState<Grout>(DEFAULT_REFINEMENT_SETTINGS.grout);
-  const [zones, setZones] = useState<FacadeZone[]>(DEFAULT_REFINEMENT_SETTINGS.zones);
-  const [baseColor, setBaseColor] = useState<FacadeBaseColor>(
-    DEFAULT_REFINEMENT_SETTINGS.baseColor,
+  const isFirstTurn = turns.length === 0;
+  const canSend = Boolean(
+    selectedTile &&
+      draft.trim() &&
+      draft.trim().length <= 500 &&
+      !isGenerating &&
+      !normalizingImage &&
+      (isFirstTurn ? attachment : lastCompletedTurn?.result),
   );
-  const [note, setNote] = useState(DEFAULT_REFINEMENT_SETTINGS.note);
-  const [settingsInitialized, setSettingsInitialized] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -153,11 +146,17 @@ function VisualizePageInner() {
       .then((response) => response.json())
       .then((data) => {
         if (!alive) return;
-        const products: CatalogTile[] = Array.isArray(data?.products) ? data.products : [];
+        const products: CatalogTile[] = Array.isArray(data?.products)
+          ? data.products
+          : [];
         setAllTiles(products);
-        if (initialSlug) {
-          const initialTile = products.find((product) => product.slug === initialSlug);
-          if (initialTile) setSelectedTile(initialTile);
+        const initialTile = initialSlug
+          ? products.find((product) => product.slug === initialSlug)
+          : null;
+        if (initialTile) {
+          setSelectedTile(initialTile);
+        } else {
+          setTilePickerOpen(true);
         }
         setTilesLoading(false);
       })
@@ -176,874 +175,747 @@ function VisualizePageInner() {
       .catch(() => {});
   }, []);
 
-  const maskReady = mode !== 'mask' || maskHasStrokes;
-  const canGenerate = Boolean(
-    photo && selectedTile && maskReady && stage !== 'generating',
-  );
-
-  const savedUrlRef = useRef<string | null>(null);
   useEffect(() => {
-    if (stage !== 'result' || !resultUrl || savedUrlRef.current === resultUrl) return;
-    savedUrlRef.current = resultUrl;
-    fetch('/api/visualize/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageUrl: resultUrl,
-        tileSlug: selectedTile?.slug,
-        tileName: selectedTile?.name,
-        surface: mode,
-      }),
-    }).catch(() => {});
-  }, [stage, resultUrl, selectedTile, mode]);
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 104)}px`;
+  }, [draft]);
 
-  async function pollVisualization(requestId: string): Promise<string> {
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [turns.length, isGenerating]);
+
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setLightboxUrl(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [lightboxUrl]);
+
+  async function pollVisualization(
+    requestId: string,
+  ): Promise<{ imageUrl: string; sourceUrl: string }> {
     const deadline = Date.now() + 4 * 60 * 1000;
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 3000));
       const response = await fetch(
         `/api/visualize/status?requestId=${encodeURIComponent(requestId)}`,
       );
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || `Сервер вернул ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.status === 'completed' && data.imageUrl) {
-        return data.imageUrl as string;
+      if (!response.ok) throw new Error(await responseError(response));
+      const data = (await response.json()) as {
+        status?: unknown;
+        imageUrl?: unknown;
+        sourceUrl?: unknown;
+        error?: unknown;
+      };
+      if (data.status === 'completed' && typeof data.imageUrl === 'string') {
+        return {
+          imageUrl: data.imageUrl,
+          sourceUrl:
+            typeof data.sourceUrl === 'string' ? data.sourceUrl : data.imageUrl,
+        };
       }
       if (data.status === 'failed') {
-        throw new Error(data.error || 'Генерация не удалась');
+        throw new Error(
+          typeof data.error === 'string' ? data.error : 'Генерация не удалась',
+        );
       }
     }
     throw new Error('Превышено время ожидания генерации');
   }
 
-  function currentRefinements(): RefinementSettings {
-    return { pattern, orientation, grout, zones, baseColor, note };
-  }
-
-  function syncSettings(settings: unknown) {
-    if (!settings || typeof settings !== 'object') return;
-    const data = settings as Partial<RefinementSettings>;
-    if (PATTERN_OPTIONS.some((option) => option.value === data.pattern)) {
-      setPattern(data.pattern as Pattern);
-    }
-    if (ORIENTATION_OPTIONS.some((option) => option.value === data.orientation)) {
-      setOrientation(data.orientation as Orientation);
-    }
-    if (GROUT_OPTIONS.some((option) => option.value === data.grout)) {
-      setGrout(data.grout as Grout);
-    }
-    if (Array.isArray(data.zones) && data.zones.length > 0) {
-      setZones(data.zones);
-    }
-    if (
-      FACADE_BASE_COLOR_OPTIONS.some((option) => option.value === data.baseColor)
-    ) {
-      setBaseColor(data.baseColor as FacadeBaseColor);
-    }
-    setNote(typeof data.note === 'string' ? data.note : '');
-    setSettingsInitialized(true);
-  }
-
-  async function generateFor(
-    tile: CatalogTile,
-    options?: {
-      roomOverride?: string;
-      refinements?: RefinementSettings;
-    },
-  ) {
-    const roomImage = options?.roomOverride ?? photo;
-    if (!roomImage) return;
-
-    let maskImage: string | undefined;
-    if (mode === 'mask') {
-      maskImage = maskRef.current?.getMask() ?? lastMaskRef.current ?? undefined;
-      if (!maskImage) {
-        setErrorMsg('Выделите участок кистью на фото перед генерацией');
-        setStage('error');
-        return;
-      }
-      lastMaskRef.current = maskImage;
-    }
-
-    const refinements =
-      options?.refinements ?? (settingsInitialized ? currentRefinements() : undefined);
-    setStage('generating');
-    setErrorMsg(null);
+  async function runTurn(turnId: string, request: TurnRequest) {
+    const startedAt = Date.now();
     try {
-      const response = await fetch('/api/visualize', {
+      const response = await fetch('/api/visualize/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          roomImage,
-          tileId: tile.slug,
-          surface: mode,
-          maskImage,
-          regionWidthM: mode === 'floor' ? undefined : parsePositive(widthM),
-          regionHeightM: mode === 'floor' ? undefined : parsePositive(heightM),
-          floorAreaM2: mode === 'floor' ? parsePositive(areaM2) : undefined,
-          pattern: refinements?.pattern,
-          orientation: refinements?.orientation,
-          grout: refinements?.grout,
-          note: refinements?.note,
-          ...(mode === 'facade'
-            ? {
-                zones: refinements?.zones ?? zones,
-                baseColor: refinements?.baseColor ?? baseColor,
-              }
-            : {}),
+          baseImage: request.baseImage,
+          tileId: request.tile.slug,
+          message: request.message,
+          tileChanged: request.tileChanged,
         }),
       });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || `Сервер вернул ${response.status}`);
+      if (!response.ok) throw new Error(await responseError(response));
+      const data = (await response.json()) as {
+        async?: unknown;
+        requestId?: unknown;
+      };
+      if (data.async !== true || typeof data.requestId !== 'string') {
+        throw new Error('Сервер не вернул номер задания');
       }
 
-      const data = await response.json();
-      syncSettings(data.settings);
-      if (data.async && data.requestId) {
-        const startedAt = Date.now();
-        let imageUrl = await pollVisualization(data.requestId);
-        if (mode === 'mask' && maskImage) {
-          const compositeResponse = await fetch('/api/visualize/composite', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              resultUrl: imageUrl,
-              roomImage,
-              maskImage,
-              segRequestId: data.segRequestId ?? null,
-            }),
-          });
-          if (!compositeResponse.ok) {
-            const compositeData = await compositeResponse.json().catch(() => ({}));
-            throw new Error(
-              compositeData.error || `Сервер вернул ${compositeResponse.status}`,
-            );
-          }
-          const compositeData = await compositeResponse.json();
-          imageUrl = compositeData.imageUrl;
-        }
-        setResultUrl(imageUrl);
-        setResultMeta({
-          provider: data.provider,
-          durationMs: Date.now() - startedAt,
-        });
-      } else {
-        setResultUrl(data.imageUrl);
-        setResultMeta({
-          provider: data.provider,
-          durationMs: data.durationMs,
-        });
-      }
-      setStage('result');
+      const result = await pollVisualization(data.requestId);
+      setTurns((current) =>
+        current.map((turn) =>
+          turn.id === turnId
+            ? {
+                ...turn,
+                status: 'completed',
+                error: undefined,
+                result: {
+                  ...result,
+                  durationMs: Date.now() - startedAt,
+                  saving: false,
+                  saved: false,
+                },
+              }
+            : turn,
+        ),
+      );
+      if (request.tileChanged) setTileChangedPending(false);
     } catch (err) {
-      console.error(err);
-      setErrorMsg(friendlyError(err));
-      setStage('error');
+      setTurns((current) =>
+        current.map((turn) =>
+          turn.id === turnId
+            ? {
+                ...turn,
+                status: 'error',
+                error: friendlyError(err),
+                result: undefined,
+              }
+            : turn,
+        ),
+      );
+    } finally {
+      submissionLockRef.current = false;
     }
   }
 
-  function handleGenerate() {
-    if (!selectedTile || !photo) return;
-    void generateFor(selectedTile);
+  function sendMessage() {
+    if (!canSend || submissionLockRef.current || !selectedTile) return;
+    const message = draft.trim();
+    const baseImage = isFirstTurn
+      ? attachment
+      : lastCompletedTurn?.result?.sourceUrl ||
+        lastCompletedTurn?.result?.imageUrl ||
+        null;
+    if (!baseImage) return;
+
+    submissionLockRef.current = true;
+    const id = crypto.randomUUID();
+    const request: TurnRequest = {
+      baseImage,
+      message,
+      tile: selectedTile,
+      tileChanged: tileChangedPending,
+    };
+    const turn: ChatTurn = {
+      id,
+      request,
+      userImage: isFirstTurn ? attachment ?? undefined : undefined,
+      status: 'generating',
+    };
+    setTurns((current) => [...current, turn]);
+    setDraft('');
+    setAttachment(null);
+    setAttachmentError(null);
+    void runTurn(id, request);
   }
 
-  function handleReset() {
-    setStage('idle');
-    setResultUrl(null);
-    setResultMeta(null);
-    setErrorMsg(null);
-    if (stage === 'result' && mode === 'mask') {
-      setMaskHasStrokes(false);
-      lastMaskRef.current = null;
+  function retryTurn(turn: ChatTurn) {
+    if (isGenerating || submissionLockRef.current) return;
+    submissionLockRef.current = true;
+    setTurns((current) =>
+      current.map((item) =>
+        item.id === turn.id
+          ? { ...item, status: 'generating', error: undefined }
+          : item,
+      ),
+    );
+    void runTurn(turn.id, turn.request);
+  }
+
+  async function saveTurn(turn: ChatTurn) {
+    if (!turn.result || turn.result.saving || turn.result.saved) return;
+    setTurns((current) =>
+      current.map((item) =>
+        item.id === turn.id && item.result
+          ? {
+              ...item,
+              result: {
+                ...item.result,
+                saving: true,
+                saveError: undefined,
+              },
+            }
+          : item,
+      ),
+    );
+    try {
+      const response = await fetch('/api/visualize/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUrl: turn.result.imageUrl,
+          tileSlug: turn.request.tile.slug,
+          tileName: turn.request.tile.name,
+          surface: 'chat',
+        }),
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+      setTurns((current) =>
+        current.map((item) =>
+          item.id === turn.id && item.result
+            ? {
+                ...item,
+                result: {
+                  ...item.result,
+                  saving: false,
+                  saved: true,
+                  saveError: undefined,
+                },
+              }
+            : item,
+        ),
+      );
+    } catch (err) {
+      setTurns((current) =>
+        current.map((item) =>
+          item.id === turn.id && item.result
+            ? {
+                ...item,
+                result: {
+                  ...item.result,
+                  saving: false,
+                  saveError: friendlyError(err),
+                },
+              }
+            : item,
+        ),
+      );
     }
-    // Фото, плитка, режим и постоянные настройки сохраняются; note одноразовый.
-    setNote(DEFAULT_REFINEMENT_SETTINGS.note);
   }
 
-  function handleModeChange(nextMode: Surface) {
-    if (nextMode === mode) return;
-    if (nextMode === 'mask' || mode === 'mask') {
-      setMaskHasStrokes(false);
-      lastMaskRef.current = null;
+  async function handleAttachment(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !isFirstTurn) return;
+    if (!file.type.startsWith('image/')) {
+      setAttachmentError('Загрузите изображение в формате JPG, PNG или WebP.');
+      return;
     }
-    setMode(nextMode);
+    if (file.size > 10 * 1024 * 1024) {
+      setAttachmentError('Файл больше 10 MB. Уменьшите его размер.');
+      return;
+    }
+    setNormalizingImage(true);
+    setAttachmentError(null);
+    try {
+      setAttachment(await normalizeImageFile(file));
+    } catch {
+      setAttachmentError('Не удалось обработать фото. Попробуйте другое.');
+    } finally {
+      setNormalizingImage(false);
+    }
   }
 
-  function handleContinue() {
-    if (!resultUrl) return;
-    setPhoto(resultUrl);
-    setLayerCount((count) => count + 1);
-    setMode('mask');
-    setMaskHasStrokes(false);
-    lastMaskRef.current = null;
-    maskRef.current?.clear();
-    setResultUrl(null);
-    setResultMeta(null);
-    setErrorMsg(null);
-    setNote('');
-    setStage('idle');
+  function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
   }
 
-  function handleSwapTile(tile: CatalogTile) {
-    const originalPhoto = originalPhotoRef.current ?? photo;
+  function selectTile(tile: CatalogTile) {
+    const previousTileSlug = lastCompletedTurn?.request.tile.slug;
     setSelectedTile(tile);
-    if (originalPhoto) setPhoto(originalPhoto);
-    setLayerCount(1);
-    void generateFor(tile, {
-      roomOverride: originalPhoto ?? undefined,
-      refinements: currentRefinements(),
-    });
-  }
-
-  function handlePhotoUpload(dataUrl: string | null) {
-    setPhoto(dataUrl);
-    originalPhotoRef.current = dataUrl;
-    setLayerCount(1);
-    setMaskHasStrokes(false);
-    lastMaskRef.current = null;
-  }
-
-  function handleRefine() {
-    if (!selectedTile) return;
-    void generateFor(selectedTile, { refinements: currentRefinements() });
-  }
-
-  function toggleFacadeZone(zone: FacadeZone) {
-    setZones((current) => {
-      if (zone === 'full') return ['full'];
-      const partialZones = current.filter((currentZone) => currentZone !== 'full');
-      if (partialZones.includes(zone)) {
-        const nextZones = partialZones.filter((currentZone) => currentZone !== zone);
-        return nextZones.length > 0 ? nextZones : ['full'];
-      }
-      return [...partialZones, zone];
-    });
-  }
-
-  const facadeIsPartial = mode === 'facade' && !zones.includes('full');
-  const photoTips =
-    mode === 'facade'
-      ? [
-          'Снимайте дом целиком — прямо или под небольшим углом',
-          'Оставьте в кадре весь фасад, включая линию крыши',
-          'Фотографируйте при ровном дневном свете',
-          'Держите камеру ровно, без сильного наклона и искажения перспективы',
-        ]
-      : [
-          'Снимайте при дневном свете, без вспышки',
-          'Держите камеру ровно, лицом к стене или полу',
-          'Захватите поверхность целиком, без сильного наклона',
-          'Уберите лишние предметы с пола или стены',
-          'Следите за резкостью — без размытия и пересветов',
-          'Чем выше разрешение, тем точнее результат',
-        ];
-
-  if (stage === 'generating') {
-    return (
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-8">
-        <div className="card p-10 sm:p-16">
-          <VisualizerLoader />
-        </div>
-      </div>
+    setTileChangedPending(
+      Boolean(previousTileSlug && previousTileSlug !== tile.slug),
     );
+    setTilePickerOpen(false);
   }
 
-  if (stage === 'result' && resultUrl) {
-    return (
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-12">
-        <button
-          type="button"
-          onClick={handleReset}
-          className="mb-4 inline-flex cursor-pointer items-center gap-2 text-sm text-mist-400 hover:text-gold-400"
-        >
-          <ArrowLeft size={14} /> Назад к загрузке
-        </button>
-
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-          <div className="space-y-3">
-            <div className="card overflow-hidden">
-              <div className="relative flex w-full justify-center bg-ink-900">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={resultUrl}
-                  alt="Результат визуализации"
-                  className="block h-auto max-h-[78vh] w-auto max-w-full object-contain"
-                />
-                <div className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-gold-500 px-3 py-1 text-xs font-semibold text-ink-900">
-                  <Sparkles size={12} /> ИИ-визуализация
-                </div>
-                {resultMeta && resultMeta.durationMs > 0 && (
-                  <div className="absolute right-4 top-4 rounded-full bg-ink-900/80 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-mist-200 backdrop-blur">
-                    {(resultMeta.durationMs / 1000).toFixed(0)}s
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-white/[.02] p-3 text-[13px] leading-relaxed text-mist-400">
-              <Info size={16} className="mt-0.5 shrink-0 text-gold-400" />
-              <div className="space-y-1.5">
-                <p>
-                  Визуализация создана ИИ и носит ориентировочный характер: реальные
-                  цвет, фактура, масштаб и укладка могут немного отличаться. Сверяйтесь
-                  с физическим образцом в шоуруме.
-                </p>
-                <p>
-                  Нужна точная визуализация под ваш проект? Напишите нам —{' '}
-                  {(() => {
-                    const whatsapp = waLink(contacts?.whatsapp);
-                    const text = encodeURIComponent(
-                      'Здравствуйте! Нужна точная визуализация проекта с плиткой ' +
-                        selectedTile?.name,
-                    );
-                    const href = whatsapp
-                      ? `${whatsapp}${whatsapp.includes('?') ? '&' : '?'}text=${text}`
-                      : '/#contacts';
-                    return (
-                      <a
-                        href={href}
-                        target={whatsapp ? '_blank' : undefined}
-                        rel={whatsapp ? 'noopener' : undefined}
-                        className="text-gold-400 hover:underline"
-                      >
-                        {whatsapp ? 'WhatsApp' : 'свяжитесь с нами'}
-                      </a>
-                    );
-                  })()}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <aside className="space-y-4">
-            {layerCount > 1 && (
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-gold-500/40 bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-400">
-                <Layers size={12} /> Наложено плиток: {layerCount}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={handleContinue}
-              className="btn-gold w-full cursor-pointer !py-3 text-sm"
-            >
-              <Layers size={16} /> Добавить плитку на другой участок
-            </button>
-            <p className="-mt-2 px-1 text-xs text-mist-400">
-              Возьмём этот результат за основу: выделите кистью другой участок и выберите
-              другую плитку — наложим поверх, не трогая уже облицованное.
-            </p>
-
-            <div className="card p-5">
-              <div className="text-xs uppercase tracking-wider text-mist-400">Выбрано</div>
-              <div className="mt-2 flex gap-3">
-                {selectedTile && (
-                  <>
-                    {selectedTile.imageUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={selectedTile.imageUrl}
-                        alt={selectedTile.name}
-                        className="h-16 w-16 rounded-lg object-cover"
-                      />
-                    )}
-                    <div>
-                      <div className="font-semibold">{selectedTile.name}</div>
-                      <div className="text-xs text-mist-400">
-                        {selectedTile.collection || ''}
-                        {selectedTile.dimensions ? ` · ${selectedTile.dimensions}` : ''}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <a
-                  href={resultUrl}
-                  download="japan-ceramic-visualization.jpg"
-                  className="btn-ghost !px-3 !py-2 text-sm"
-                >
-                  <Download size={14} /> Скачать
-                </a>
-                {(() => {
-                  const whatsapp = waLink(contacts?.whatsapp);
-                  const text = encodeURIComponent(
-                    `Здравствуйте! Интересует плитка ${selectedTile?.name}. Можно образец?`,
-                  );
-                  const href = whatsapp
-                    ? `${whatsapp}${whatsapp.includes('?') ? '&' : '?'}text=${text}`
-                    : '/#contacts';
-                  return (
-                    <a
-                      href={href}
-                      target={whatsapp ? '_blank' : undefined}
-                      rel={whatsapp ? 'noopener' : undefined}
-                      className="btn-gold !px-3 !py-2 text-sm"
-                    >
-                      <MessageCircle size={14} /> Заявка
-                    </a>
-                  );
-                })()}
-              </div>
-            </div>
-
-            <div className="card p-5">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-mist-400">
-                <SlidersHorizontal size={14} className="text-gold-400" /> Уточнить
-              </div>
-              <div className="mt-4 space-y-4">
-                {mode === 'facade' && (
-                  <>
-                    <FacadeZonePicker zones={zones} onToggle={toggleFacadeZone} compact />
-                    {facadeIsPartial && (
-                      <FacadeColorPicker
-                        baseColor={baseColor}
-                        onChange={setBaseColor}
-                        compact
-                      />
-                    )}
-                  </>
-                )}
-
-                <div>
-                  <div className="mb-2 text-xs font-medium text-mist-300">
-                    Схема укладки
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {PATTERN_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setPattern(option.value)}
-                        className={cn(
-                          'cursor-pointer rounded-lg border px-2.5 py-2 text-xs font-medium transition',
-                          pattern === option.value
-                            ? 'border-gold-500 bg-gold-500/10 text-gold-400'
-                            : 'border-white/10 text-mist-400 hover:border-white/30',
-                        )}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 text-xs font-medium text-mist-300">Ориентация</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {ORIENTATION_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setOrientation(option.value)}
-                        className={cn(
-                          'cursor-pointer rounded-lg border px-2.5 py-2 text-xs font-medium transition',
-                          orientation === option.value
-                            ? 'border-gold-500 bg-gold-500/10 text-gold-400'
-                            : 'border-white/10 text-mist-400 hover:border-white/30',
-                        )}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 text-xs font-medium text-mist-300">Затирка</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {GROUT_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setGrout(option.value)}
-                        className={cn(
-                          'cursor-pointer rounded-lg border px-2 py-2 text-xs font-medium transition',
-                          grout === option.value
-                            ? 'border-gold-500 bg-gold-500/10 text-gold-400'
-                            : 'border-white/10 text-mist-400 hover:border-white/30',
-                        )}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <label className="block">
-                  <span className="mb-2 block text-xs font-medium text-mist-300">
-                    Что поправить?
-                  </span>
-                  <textarea
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                    maxLength={300}
-                    rows={3}
-                    placeholder="например: сделай швы тоньше"
-                    className="w-full resize-y rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm text-mist-100 outline-none transition placeholder:text-mist-500 focus:border-gold-500/70"
-                  />
-                  <span className="mt-1 block text-right text-[10px] text-mist-500">
-                    {note.length}/300
-                  </span>
-                </label>
-
-                <button
-                  type="button"
-                  onClick={handleRefine}
-                  className="btn-gold w-full !px-4 !py-3 text-sm"
-                >
-                  <RefreshCw size={15} /> Перегенерировать
-                </button>
-              </div>
-            </div>
-
-            <div className="card p-5">
-              <div className="text-xs uppercase tracking-wider text-mist-400">
-                Попробуйте другую
-              </div>
-              <div className="mt-3 max-h-80 overflow-y-auto pr-1">
-                <CatalogTileSelector
-                  selectedSlug={selectedTile?.slug ?? null}
-                  onSelect={handleSwapTile}
-                  compact
-                  tiles={allTiles}
-                  loading={tilesLoading}
-                />
-              </div>
-            </div>
-
-            <div className="card p-5">
-              <div className="font-semibold">Бесплатный образец</div>
-              <p className="mt-1 text-sm text-mist-400">
-                Заберите образец этой плитки в шоуруме — почувствуете текстуру руками.
-              </p>
-              {contacts?.mapLink && (
-                <a
-                  href={contacts.mapLink}
-                  target="_blank"
-                  rel="noopener"
-                  className="mt-3 inline-block text-sm text-gold-400 hover:underline"
-                >
-                  {contacts.address || 'Шоурум на карте'} →
-                </a>
-              )}
-            </div>
-          </aside>
-        </div>
-      </div>
-    );
+  function resetChat() {
+    const hasWork = turns.length > 0 || Boolean(attachment) || Boolean(draft.trim());
+    if (
+      hasWork &&
+      !window.confirm('Начать новый чат? Текущая переписка будет очищена.')
+    ) {
+      return;
+    }
+    setTurns([]);
+    setDraft('');
+    setAttachment(null);
+    setAttachmentError(null);
+    setTileChangedPending(false);
+    setLightboxUrl(null);
+    submissionLockRef.current = false;
   }
+
+  const sendHint = isGenerating
+    ? 'Дождитесь текущего результата'
+    : !selectedTile
+      ? 'Сначала выберите плитку'
+      : isFirstTurn && !attachment
+        ? 'Прикрепите фото и опишите, что изменить'
+        : !draft.trim()
+          ? 'Напишите, что сделать с выбранной плиткой'
+          : !isFirstTurn && !lastCompletedTurn
+            ? 'Повторите неудавшуюся генерацию'
+            : 'Enter — отправить · Shift+Enter — новая строка';
 
   return (
-    <div className="mx-auto max-w-7xl px-4 pb-32 pt-8 sm:px-8 sm:pb-40 sm:pt-12">
-      <div className="mb-8">
-        <span className="label-pill">ИИ-визуализация</span>
-        <h1 className="mt-3 font-display text-3xl font-bold sm:text-4xl">
-          Примерьте плитку в своём пространстве
-        </h1>
-        <p className="mt-2 text-mist-400">
-          Загрузите фото, выберите поверхность и плитку — визуализатор сохранит сцену и
-          реальный характер материала.
-        </p>
-      </div>
-
-      {stage === 'error' && errorMsg && (
-        <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm">
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-400" />
-          <div className="flex-1">
-            <div className="font-semibold text-red-400">Что-то пошло не так</div>
-            <div className="mt-1 text-mist-400">{errorMsg}</div>
-            {selectedTile && photo && (
-              <button
-                type="button"
-                onClick={() => {
-                  setErrorMsg(null);
-                  handleGenerate();
-                }}
-                className="btn-gold mt-3 cursor-pointer !px-4 !py-2 text-xs"
-              >
-                <RotateCcw size={14} /> Попробовать снова
-              </button>
-            )}
+    <div className="min-h-[calc(100dvh-80px)] bg-ink-900">
+      <header className="sticky top-[80px] z-30 border-b border-white/10 bg-ink-900/95 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-3 py-3 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-ink-700">
+              {selectedTile?.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={selectedTile.imageUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-mist-400">
+                  <ImagePlus size={18} />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate font-sans text-sm font-semibold sm:text-base">
+                {selectedTile?.name ?? 'Плитка не выбрана'}
+              </h1>
+              <p className="truncate text-[11px] text-mist-400 sm:text-xs">
+                {selectedTile
+                  ? [selectedTile.collection, selectedTile.dimensions]
+                      .filter(Boolean)
+                      .join(' · ') || 'Japan Ceramic'
+                  : 'Выберите товар из каталога'}
+              </p>
+            </div>
           </div>
+          {tileChangedPending && (
+            <span className="hidden rounded-full border border-gold-500/40 bg-gold-500/10 px-2.5 py-1 text-[10px] text-gold-400 lg:inline-flex">
+              Заменим в следующем ходе
+            </span>
+          )}
           <button
             type="button"
-            onClick={handleReset}
-            aria-label="Закрыть"
-            className="cursor-pointer text-mist-400 hover:text-mist-100"
+            onClick={() => setTilePickerOpen(true)}
+            disabled={isGenerating}
+            className="shrink-0 cursor-pointer rounded-lg border border-white/15 px-3 py-2 text-xs font-medium text-mist-200 transition hover:border-white/30 hover:bg-white/[.04] disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
           >
-            <RotateCcw size={16} />
+            Сменить плитку
+          </button>
+          <button
+            type="button"
+            onClick={resetChat}
+            disabled={isGenerating}
+            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-mist-400 transition hover:bg-white/[.04] hover:text-mist-100 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-sm"
+          >
+            <RotateCcw size={15} />
+            <span className="hidden sm:inline">Новый чат</span>
           </button>
         </div>
-      )}
+      </header>
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
-        <div className="space-y-6">
-          <section>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
-              {photo && mode === 'mask' ? 'Выделите участок' : 'Фото пространства'}
-            </h2>
-            {photo && mode === 'mask' ? (
-              <div className="space-y-3">
-                <MaskCanvas
-                  ref={maskRef}
-                  imageSrc={photo}
-                  onMaskChange={setMaskHasStrokes}
-                />
-                <p className="text-xs text-mist-400">
-                  Закрасьте участок: плитка появится только внутри белой маски, а окна,
-                  двери и остальная сцена останутся без изменений.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => handlePhotoUpload(null)}
-                  className="cursor-pointer text-xs text-mist-400 hover:text-gold-400"
-                >
-                  ← Сменить фото
-                </button>
+      <div className="mx-auto flex min-h-[calc(100dvh-160px)] max-w-4xl flex-col">
+        <main
+          aria-live="polite"
+          className="flex-1 space-y-7 px-3 pb-8 pt-7 sm:px-6 sm:pt-10"
+        >
+          <AssistantIntro contacts={contacts} tile={selectedTile} />
+
+          {turns.map((turn) => (
+            <div key={turn.id} className="space-y-4">
+              <div className="flex justify-end">
+                <div className="max-w-[88%] rounded-2xl rounded-br-md border border-gold-500/20 bg-gold-500/10 px-4 py-3 sm:max-w-[75%]">
+                  {turn.userImage && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={turn.userImage}
+                      alt="Прикреплённое фото"
+                      className="mb-3 max-h-80 w-auto rounded-xl border border-white/10 object-contain"
+                    />
+                  )}
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-mist-100 sm:text-[15px]">
+                    {turn.request.message}
+                  </p>
+                </div>
               </div>
-            ) : (
-              <PhotoUploader value={photo} onChange={handlePhotoUpload} />
-            )}
-          </section>
 
-          <section className="card p-5">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-gold-400">
-              <Camera size={16} /> Как сфотографировать
-            </h2>
-            <ul className="space-y-2.5 text-sm text-mist-300">
-              {photoTips.map((tip) => (
-                <li key={tip} className="flex items-start gap-2.5">
-                  <Check size={16} className="mt-0.5 shrink-0 text-gold-400" />
-                  <span>{tip}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          {photo && (
-            <section className="animate-slide-up">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400">
-                Что менять
-              </h2>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {MODES.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => handleModeChange(option.id)}
-                    className={cn(
-                      'inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-sm font-medium transition',
-                      mode === option.id
-                        ? 'border-gold-500 bg-gold-500/10 text-gold-400'
-                        : 'border-white/10 text-mist-400 hover:border-white/30',
-                    )}
-                  >
-                    {option.id === 'mask' && <Brush size={15} />}
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              {mode === 'mask' && (
-                <p className="mt-2 text-xs text-mist-400">
-                  Закрасьте нужный участок, затем выберите плитку. Несколько материалов
-                  можно комбинировать по очереди.
-                </p>
-              )}
-
-              {mode === 'facade' && (
-                <div className="mt-5 space-y-5">
-                  <FacadeZonePicker zones={zones} onToggle={toggleFacadeZone} />
-                  {facadeIsPartial && (
-                    <FacadeColorPicker
-                      baseColor={baseColor}
-                      onChange={setBaseColor}
+              <div className="flex items-start gap-2.5">
+                <AssistantAvatar />
+                <div className="min-w-0 flex-1">
+                  {turn.status === 'generating' && <GeneratingBubble />}
+                  {turn.status === 'error' && (
+                    <ErrorBubble
+                      message={turn.error ?? 'Генерация не удалась'}
+                      onRetry={() => retryTurn(turn)}
+                    />
+                  )}
+                  {turn.status === 'completed' && turn.result && (
+                    <ResultBubble
+                      turn={turn}
+                      contacts={contacts}
+                      onOpen={() => setLightboxUrl(turn.result?.imageUrl ?? null)}
+                      onSave={() => void saveTurn(turn)}
                     />
                   )}
                 </div>
-              )}
-            </section>
+              </div>
+            </div>
+          ))}
+          <div ref={threadEndRef} />
+        </main>
+
+        <div className="sticky bottom-0 z-20 border-t border-white/[.06] bg-ink-900/95 px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:px-6">
+          {isFirstTurn && (
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+              {SUGGESTIONS.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => {
+                    setDraft(suggestion);
+                    textareaRef.current?.focus();
+                  }}
+                  className="shrink-0 cursor-pointer rounded-full border border-white/10 bg-white/[.03] px-3 py-1.5 text-xs text-mist-300 transition hover:border-gold-500/40 hover:text-gold-400"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
           )}
 
-          {photo && (
-            <section className="card animate-slide-up p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-mist-400">
-                Реальные размеры поверхности
-              </h2>
-              <p className="mb-3 mt-1 text-xs text-mist-400">
-                Необязательно, но помогает положить плитку в правильном масштабе.
-              </p>
-              {mode === 'floor' ? (
-                <label className="block">
-                  <span className="text-xs text-mist-400">Площадь пола, м²</span>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="0.1"
-                    value={areaM2}
-                    onChange={(event) => setAreaM2(event.target.value)}
-                    placeholder="напр. 18"
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm outline-none transition focus:border-white/30"
-                  />
-                </label>
+          {attachment && isFirstTurn && (
+            <div className="mb-2 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-ink-700 p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={attachment}
+                alt="Фото для первого сообщения"
+                className="h-14 w-14 rounded-lg object-cover"
+              />
+              <div className="pr-2 text-xs text-mist-300">Фото готово к отправке</div>
+              <button
+                type="button"
+                onClick={() => setAttachment(null)}
+                className="cursor-pointer rounded-full p-1 text-mist-400 hover:bg-white/10 hover:text-mist-100"
+                aria-label="Удалить фото"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          )}
+
+          {attachmentError && (
+            <p className="mb-2 text-xs text-red-300">{attachmentError}</p>
+          )}
+
+          <div className="flex items-end gap-2 rounded-2xl border border-white/15 bg-ink-700/70 p-2 shadow-2xl shadow-black/20 transition focus-within:border-gold-500/50">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAttachment}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!isFirstTurn || isGenerating || normalizingImage}
+              className="mb-0.5 inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-mist-400 transition hover:bg-white/[.06] hover:text-mist-100 disabled:cursor-not-allowed disabled:opacity-35"
+              aria-label="Прикрепить фото"
+              title={
+                isFirstTurn
+                  ? 'Прикрепить фото'
+                  : 'Новое фото можно прикрепить в новом чате'
+              }
+            >
+              {normalizingImage ? (
+                <RefreshCw size={19} className="animate-spin" />
               ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="text-xs text-mist-400">Ширина, м</span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.1"
-                      value={widthM}
-                      onChange={(event) => setWidthM(event.target.value)}
-                      placeholder="напр. 6"
-                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm outline-none transition focus:border-white/30"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs text-mist-400">Высота, м</span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.1"
-                      value={heightM}
-                      onChange={(event) => setHeightM(event.target.value)}
-                      placeholder="напр. 3"
-                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-sm outline-none transition focus:border-white/30"
-                    />
-                  </label>
-                </div>
+                <Paperclip size={20} />
               )}
-            </section>
-          )}
+            </button>
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={handleTextareaKeyDown}
+              maxLength={500}
+              rows={1}
+              placeholder={
+                isFirstTurn
+                  ? 'Например: облицуй весь фасад этой плиткой'
+                  : 'Что изменить в результате?'
+              }
+              className="max-h-[104px] min-h-10 flex-1 resize-none bg-transparent px-1 py-2 text-sm leading-6 text-mist-100 outline-none placeholder:text-mist-400 sm:text-[15px]"
+            />
+            <button
+              type="button"
+              onClick={sendMessage}
+              disabled={!canSend}
+              className="mb-0.5 inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-gold-500 text-ink-900 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:bg-white/[.08] disabled:text-mist-400"
+              aria-label="Отправить"
+            >
+              <Send size={18} />
+            </button>
+          </div>
+          <p className="mt-1.5 px-2 text-[10px] text-mist-400 sm:text-xs">
+            {sendHint}
+          </p>
         </div>
+      </div>
 
-        <div className="space-y-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-mist-400">
-            Выберите плитку
-          </h2>
-          <CatalogTileSelector
-            selectedSlug={selectedTile?.slug ?? null}
-            onSelect={setSelectedTile}
-            tiles={allTiles}
-            loading={tilesLoading}
+      {tilePickerOpen && (
+        <div
+          className="fixed inset-0 z-[var(--z-drawer)] flex items-end bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Выбор плитки"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && selectedTile) {
+              setTilePickerOpen(false);
+            }
+          }}
+        >
+          <div className="max-h-[88dvh] w-full overflow-hidden rounded-t-2xl border border-white/10 bg-ink-800 sm:max-w-4xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-4 sm:px-6">
+              <div>
+                <h2 className="font-sans text-lg font-semibold">Выберите плитку</h2>
+                <p className="mt-0.5 text-xs text-mist-400">
+                  Она будет использоваться в следующем сообщении
+                </p>
+              </div>
+              {selectedTile && (
+                <button
+                  type="button"
+                  onClick={() => setTilePickerOpen(false)}
+                  className="cursor-pointer rounded-full p-2 text-mist-400 hover:bg-white/[.06] hover:text-mist-100"
+                  aria-label="Закрыть"
+                >
+                  <X size={20} />
+                </button>
+              )}
+            </div>
+            <div className="max-h-[calc(88dvh-82px)] overflow-y-auto p-4 sm:p-6">
+              <CatalogTileSelector
+                selectedSlug={selectedTile?.slug ?? null}
+                onSelect={selectTile}
+                tiles={allTiles}
+                loading={tilesLoading}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[var(--z-menu)] flex items-center justify-center bg-black/95 p-3 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Результат на весь экран"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 z-10 cursor-pointer rounded-full bg-white/10 p-2.5 text-white backdrop-blur hover:bg-white/20"
+            aria-label="Закрыть"
+          >
+            <X size={22} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="Результат визуализации"
+            className="max-h-full max-w-full object-contain"
+            onClick={(event) => event.stopPropagation()}
           />
         </div>
-      </div>
+      )}
+    </div>
+  );
+}
 
-      <div className="sticky bottom-4 z-30 mt-10 flex flex-col items-center gap-2 px-4">
+function AssistantAvatar() {
+  return (
+    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gold-500/30 bg-gold-500/10 text-gold-400">
+      <Bot size={16} />
+    </div>
+  );
+}
+
+function AssistantIntro({
+  contacts,
+  tile,
+}: {
+  contacts: Contacts | null;
+  tile: CatalogTile | null;
+}) {
+  const message = tile
+    ? `Здравствуйте! Хочу подобрать плитку ${tile.name} для своего проекта.`
+    : 'Здравствуйте! Хочу подобрать плитку для своего проекта.';
+  const href = waMessageLink(contacts?.whatsapp, message);
+  const hasWhatsApp = Boolean(waLink(contacts?.whatsapp));
+
+  return (
+    <div className="flex items-start gap-2.5">
+      <AssistantAvatar />
+      <div className="max-w-2xl rounded-2xl rounded-tl-md border border-white/10 bg-white/[.035] px-4 py-4 sm:px-5">
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[.12em] text-gold-400">
+          <Sparkles size={14} />
+          AI-визуализатор
+        </div>
+        <p className="text-sm leading-6 text-mist-200 sm:text-[15px]">
+          Пришлите фото помещения или фасада и напишите, что сделать — я примерю
+          выбранную плитку. Дальше можно править текстом: «колонны тоже облицуй»,
+          «сделай светлее»…
+        </p>
+        <p className="mt-3 border-t border-white/[.08] pt-3 text-[11px] leading-5 text-mist-400">
+          Визуализация создана ИИ и носит ориентировочный характер: реальные цвет,
+          фактура, масштаб и укладка могут немного отличаться. Сверяйтесь с физическим
+          образцом в шоуруме.
+        </p>
+        <a
+          href={href}
+          target={hasWhatsApp ? '_blank' : undefined}
+          rel={hasWhatsApp ? 'noopener' : undefined}
+          className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-gold-400 hover:text-gold-300"
+        >
+          <MessageCircle size={14} />
+          Нужна помощь? Напишите в WhatsApp
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function GeneratingBubble() {
+  return (
+    <div className="max-w-2xl overflow-hidden rounded-2xl rounded-tl-md border border-white/10 bg-white/[.035]">
+      <div className="shimmer aspect-[4/3] w-full max-w-xl" />
+      <div className="flex items-center gap-2 px-4 py-3 text-sm text-mist-300">
+        <RefreshCw size={15} className="animate-spin text-gold-400" />
+        Генерирую ~30–60 сек
+      </div>
+    </div>
+  );
+}
+
+function ErrorBubble({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="max-w-2xl rounded-2xl rounded-tl-md border border-red-500/25 bg-red-500/[.07] px-4 py-4">
+      <div className="flex items-start gap-2.5">
+        <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-300" />
+        <div>
+          <p className="text-sm leading-6 text-mist-200">{message}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-medium text-mist-100 transition hover:bg-white/[.06]"
+          >
+            <RotateCcw size={14} />
+            Попробовать снова
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResultBubble({
+  turn,
+  contacts,
+  onOpen,
+  onSave,
+}: {
+  turn: ChatTurn;
+  contacts: Contacts | null;
+  onOpen: () => void;
+  onSave: () => void;
+}) {
+  const result = turn.result;
+  if (!result) return null;
+  const href = waMessageLink(
+    contacts?.whatsapp,
+    `Здравствуйте! Интересует плитка ${turn.request.tile.name}. Можно образец?`,
+  );
+  const hasWhatsApp = Boolean(waLink(contacts?.whatsapp));
+
+  return (
+    <div className="max-w-2xl overflow-hidden rounded-2xl rounded-tl-md border border-white/10 bg-white/[.035]">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group relative block w-full cursor-zoom-in overflow-hidden bg-black/20"
+        aria-label="Открыть результат на весь экран"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={result.imageUrl}
+          alt={`Визуализация с плиткой ${turn.request.tile.name}`}
+          className="max-h-[72dvh] w-full object-contain"
+        />
+        <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/65 px-2.5 py-1 text-[10px] text-white opacity-0 backdrop-blur transition group-hover:opacity-100">
+          <ZoomIn size={12} />
+          На весь экран
+        </span>
+      </button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-xs">
+        <a
+          href={result.imageUrl}
+          download="japan-ceramic-visualization.jpg"
+          className="inline-flex items-center gap-1.5 text-mist-300 transition hover:text-gold-400"
+        >
+          <Download size={14} />
+          Скачать
+        </a>
         <button
           type="button"
-          onClick={handleGenerate}
-          disabled={!canGenerate}
-          className="btn-gold w-full max-w-md cursor-pointer !px-6 !py-4 text-base disabled:cursor-not-allowed disabled:!bg-[rgba(255,255,255,.06)] disabled:!text-[var(--ink-soft)] disabled:!shadow-none disabled:hover:!transform-none sm:w-auto"
+          onClick={onSave}
+          disabled={result.saving || result.saved}
+          className="inline-flex cursor-pointer items-center gap-1.5 text-mist-300 transition hover:text-gold-400 disabled:cursor-default disabled:text-gold-400"
         >
-          <Sparkles size={18} />
-          {!photo
-            ? 'Загрузите фото'
-            : mode === 'mask' && !maskHasStrokes
-              ? 'Выделите участок кистью'
-              : !selectedTile
-                ? 'Выберите плитку'
-                : 'Сгенерировать визуализацию'}
+          {result.saved ? (
+            <>
+              <Check size={14} />
+              Сохранено
+            </>
+          ) : result.saving ? (
+            <>
+              <RefreshCw size={14} className="animate-spin" />
+              Сохраняю
+            </>
+          ) : (
+            <>
+              <Save size={14} />
+              Сохранить в кабинет
+            </>
+          )}
         </button>
-        {photo && selectedTile && <p className="text-xs text-mist-400">до 2 минут</p>}
-      </div>
-    </div>
-  );
-}
-
-function FacadeZonePicker({
-  zones,
-  onToggle,
-  compact = false,
-}: {
-  zones: FacadeZone[];
-  onToggle: (zone: FacadeZone) => void;
-  compact?: boolean;
-}) {
-  return (
-    <div>
-      <h3
-        className={cn(
-          'font-medium text-mist-300',
-          compact
-            ? 'mb-2 text-xs'
-            : 'mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400',
+        <a
+          href={href}
+          target={hasWhatsApp ? '_blank' : undefined}
+          rel={hasWhatsApp ? 'noopener' : undefined}
+          className="inline-flex items-center gap-1.5 text-mist-300 transition hover:text-gold-400"
+        >
+          <MessageCircle size={14} />
+          Заявка
+        </a>
+        <span className="ml-auto text-[10px] text-mist-400">
+          {(result.durationMs / 1000).toFixed(0)} сек
+        </span>
+        {result.saveError && (
+          <p className="basis-full text-[11px] text-red-300">
+            Не удалось сохранить: {result.saveError}
+          </p>
         )}
-      >
-        Зоны облицовки
-      </h3>
-      <div className="flex flex-wrap gap-2">
-        {FACADE_ZONE_OPTIONS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onToggle(option.value)}
-            className={cn(
-              'cursor-pointer border font-medium transition',
-              compact
-                ? 'rounded-lg px-2.5 py-2 text-xs'
-                : 'rounded-xl px-3 py-2 text-sm',
-              zones.includes(option.value)
-                ? 'border-gold-500 bg-gold-500/10 text-gold-400'
-                : 'border-white/10 text-mist-400 hover:border-white/30',
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function FacadeColorPicker({
-  baseColor,
-  onChange,
-  compact = false,
-}: {
-  baseColor: FacadeBaseColor;
-  onChange: (color: FacadeBaseColor) => void;
-  compact?: boolean;
-}) {
-  return (
-    <div>
-      <h3
-        className={cn(
-          'font-medium text-mist-300',
-          compact
-            ? 'mb-2 text-xs'
-            : 'mb-3 text-sm font-semibold uppercase tracking-wider text-mist-400',
-        )}
-      >
-        Цвет основного фасада
-      </h3>
-      <div className="grid grid-cols-3 gap-2">
-        {FACADE_BASE_COLOR_OPTIONS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            className={cn(
-              'cursor-pointer border font-medium transition',
-              compact
-                ? 'rounded-lg px-2 py-2 text-xs'
-                : 'rounded-xl px-3 py-2 text-sm',
-              baseColor === option.value
-                ? 'border-gold-500 bg-gold-500/10 text-gold-400'
-                : 'border-white/10 text-mist-400 hover:border-white/30',
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
       </div>
     </div>
   );
@@ -1053,12 +925,12 @@ export default function VisualizePage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto max-w-7xl px-4 py-16 text-center text-mist-400">
-          Загрузка…
+        <div className="mx-auto max-w-4xl px-4 py-16 text-center text-mist-400">
+          Загрузка чата…
         </div>
       }
     >
-      <VisualizePageInner />
+      <VisualizeChat />
     </Suspense>
   );
 }

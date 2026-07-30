@@ -1,6 +1,6 @@
 /**
- * AI-ядро визуализатора. Живые генерации выполняются только через
- * fal-ai/nano-banana-pro/edit; mock оставлен для локальной разработки без FAL_KEY.
+ * AI-ядро визуализатора. Основной рендер — gpt-image-2/edit через fal,
+ * nano-banana-pro/edit остаётся запасной веткой, mock — локальным фолбэком.
  */
 import { fal } from '@fal-ai/client';
 
@@ -55,8 +55,45 @@ export type VisualizeResult = {
   usage?: TokenUsage;
 };
 
-const RENDER_ENDPOINT = 'fal-ai/nano-banana-pro/edit';
-export const RENDER_PROVIDER_LABEL = 'nano-banana-pro-edit';
+type RenderModel = 'gpt-image-2' | 'nano-banana';
+type GptImageSize =
+  | 'square_hd'
+  | 'square'
+  | 'portrait_4_3'
+  | 'portrait_16_9'
+  | 'landscape_4_3'
+  | 'landscape_16_9'
+  | 'auto'
+  | { width: number; height: number };
+type GptImageQuality = 'low' | 'medium' | 'high';
+type GptImageEditInput = {
+  prompt: string;
+  image_urls: string[];
+  mask_image_url?: string;
+  image_size?: GptImageSize;
+  quality?: GptImageQuality;
+  output_format?: 'jpeg' | 'png' | 'webp';
+  num_images?: number;
+};
+type NanoBananaEditInput = {
+  prompt: string;
+  image_urls: string[];
+  aspect_ratio?: FalAspect;
+};
+
+const GPT_IMAGE_ENDPOINT = 'openai/gpt-image-2/edit';
+const NANO_BANANA_ENDPOINT = 'fal-ai/nano-banana-pro/edit';
+const RENDER_MODEL: RenderModel =
+  process.env.AI_RENDER_MODEL === 'nano-banana'
+    ? 'nano-banana'
+    : 'gpt-image-2';
+const RENDER_ENDPOINT =
+  RENDER_MODEL === 'nano-banana' ? NANO_BANANA_ENDPOINT : GPT_IMAGE_ENDPOINT;
+
+export const RENDER_PROVIDER_LABEL =
+  RENDER_MODEL === 'nano-banana'
+    ? 'nano-banana-pro-edit'
+    : 'gpt-image-2-edit';
 
 const PATTERN_INSTRUCTION: Record<Pattern, string> = {
   stack: 'straight stacked rows with every joint aligned and no row offset',
@@ -333,28 +370,62 @@ function closestFalAspect(w: number, h: number): FalAspect {
   return best.id;
 }
 
-async function buildFalInput(input: VisualizeInput): Promise<{
-  prompt: string;
-  image_urls: string[];
-  aspect_ratio?: FalAspect;
-}> {
+function gptImageQuality(): GptImageQuality {
+  const quality = process.env.AI_IMAGE_QUALITY;
+  return quality === 'low' || quality === 'medium' || quality === 'high'
+    ? quality
+    : 'high';
+}
+
+function gptImageSizeFromDims(
+  dims: { w: number; h: number } | null,
+): GptImageSize {
+  if (!dims || !(dims.w > 0) || !(dims.h > 0)) return 'auto';
+  const scale = 1536 / Math.max(dims.w, dims.h);
+  const toValidSide = (side: number) =>
+    Math.max(512, Math.round((side * scale) / 16) * 16);
+  return {
+    width: toValidSide(dims.w),
+    height: toValidSide(dims.h),
+  };
+}
+
+async function buildFalInput(
+  input: VisualizeInput,
+): Promise<GptImageEditInput | NanoBananaEditInput> {
   if (input.tileImageUrls.length === 0) {
     throw new Error('Не передано ни одного изображения плитки');
   }
   if (input.surface === 'mask' && !input.maskImageUrl) {
     throw new Error('Для режима кисти обязательна маска');
   }
-  const urls = [
-    input.roomImageUrl,
-    ...input.tileImageUrls,
-    ...(input.surface === 'mask' && input.maskImageUrl ? [input.maskImageUrl] : []),
-  ];
   // fal не скачивает localhost/приватные URL — инлайним фото, все референсы и маску.
-  const imageUris = await Promise.all(urls.map(toDataUri));
+  const imageUris = await Promise.all(
+    [input.roomImageUrl, ...input.tileImageUrls].map(toDataUri),
+  );
   const roomDims = imageDimsFromDataUri(imageUris[0]);
+  if (RENDER_MODEL === 'gpt-image-2') {
+    const maskImageUrl =
+      input.surface === 'mask' && input.maskImageUrl
+        ? await toDataUri(input.maskImageUrl)
+        : undefined;
+    return {
+      prompt: buildPrompt(input),
+      image_urls: imageUris,
+      ...(maskImageUrl ? { mask_image_url: maskImageUrl } : {}),
+      image_size: gptImageSizeFromDims(roomDims),
+      quality: gptImageQuality(),
+      output_format: 'jpeg',
+      num_images: 1,
+    };
+  }
+
+  const nanoImageUris = input.maskImageUrl
+    ? [...imageUris, await toDataUri(input.maskImageUrl)]
+    : imageUris;
   return {
     prompt: buildPrompt(input),
-    image_urls: imageUris,
+    image_urls: nanoImageUris,
     ...(roomDims ? { aspect_ratio: closestFalAspect(roomDims.w, roomDims.h) } : {}),
   };
 }
@@ -380,11 +451,14 @@ async function viaFal(input: VisualizeInput): Promise<ProviderOutput> {
   if (!key) throw new Error('FAL_KEY не задан в .env.local');
   fal.config({ credentials: key });
 
-  const result = await fal.subscribe(RENDER_ENDPOINT, {
-    input: await buildFalInput(input),
+  const endpoint = RENDER_ENDPOINT;
+  const result = await fal.subscribe(endpoint as never, {
+    // @fal-ai/client@1.10.1 ещё не типизирует gpt-image-2/edit.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    input: (await buildFalInput(input)) as any,
     logs: false,
   });
-  const url = result.data.images[0]?.url;
+  const url = falImageUrl(result);
   if (!url) throw new Error('Ответ fal.ai без URL картинки');
   return { imageUrl: url };
 }
@@ -394,22 +468,97 @@ async function viaMock(input: VisualizeInput): Promise<ProviderOutput> {
   return { imageUrl: input.tileImageUrls[0] ?? input.roomImageUrl };
 }
 
-// Асинхронная очередь использует тот же buildFalInput, что и синхронный visualize().
+// Асинхронная очередь использует тот же endpoint и buildFalInput, что и sync-ветка.
 export async function submitGptImageJob(
   input: VisualizeInput,
 ): Promise<{ requestId: string }> {
   const key = process.env.FAL_KEY;
   if (!key) throw new Error('FAL_KEY не задан');
   fal.config({ credentials: key });
-  const submitted = await fal.queue.submit(RENDER_ENDPOINT, {
-    input: await buildFalInput(input),
+  const endpoint = RENDER_ENDPOINT;
+  const submitted = await fal.queue.submit(endpoint as never, {
+    // @fal-ai/client@1.10.1 ещё не типизирует gpt-image-2/edit.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    input: (await buildFalInput(input)) as any,
+  });
+  return { requestId: submitted.request_id };
+}
+
+export type ChatVisualizeInput = {
+  baseImageUrl: string;
+  tileImageUrls: string[];
+  tileName: string;
+  tileDims?: { wmm: number; hmm: number };
+  userMessage: string;
+  tileChanged?: boolean;
+};
+
+function buildChatPrompt(input: ChatVisualizeInput): string {
+  const tileDimensions = input.tileDims
+    ? `, exactly ${input.tileDims.wmm}×${input.tileDims.hmm} mm each`
+    : '';
+  const shapeRule = input.tileDims
+    ? ` ${tileShapeRule(input.tileDims.wmm, input.tileDims.hmm)}`
+    : '';
+  const tileChanged = input.tileChanged
+    ? ` The tile product has just been CHANGED by the user: replace ALL previously applied tile in the scene with ${input.tileName}.`
+    : '';
+
+  return `You are a photorealistic tile visualization assistant for a ceramic tile store.
+IMAGE 1 is the current state of the client's scene (a photo or the previous edit of this very scene) — continue editing this exact scene.
+IMAGES 2..N are reference variations of ONE AND THE SAME tile product ${input.tileName}${tileDimensions}. NEVER substitute a different or generic tile. Real tiles vary naturally in tone and relief between individual tiles — no visible cloning.${shapeRule}
+Keep the building/room geometry, camera angle, framing, field of view and lighting exactly as in IMAGE 1 unless the user explicitly asks otherwise.
+CHANGE ONLY what the user asks below. Every other surface of IMAGE 1 — walls, plaster, and any tile already applied in previous steps — must stay EXACTLY as it is in IMAGE 1. When the user says "also"/"тоже", they mean ADD to the existing result, not redo it.
+ONLY IF the user explicitly asks to change the tile or re-clad an already tiled area: fully replace the old tile with ${input.tileName} there — never mix two different tile products.${tileChanged}
+USER REQUEST (highest priority): ${JSON.stringify(input.userMessage)}
+Output only the final edited photo.`;
+}
+
+async function buildChatFalInput(
+  input: ChatVisualizeInput,
+): Promise<GptImageEditInput | NanoBananaEditInput> {
+  if (input.tileImageUrls.length === 0) {
+    throw new Error('Не передано ни одного изображения плитки');
+  }
+  const imageUris = await Promise.all(
+    [input.baseImageUrl, ...input.tileImageUrls].map(toDataUri),
+  );
+  const baseDims = imageDimsFromDataUri(imageUris[0]);
+  if (RENDER_MODEL === 'nano-banana') {
+    return {
+      prompt: buildChatPrompt(input),
+      image_urls: imageUris,
+      ...(baseDims ? { aspect_ratio: closestFalAspect(baseDims.w, baseDims.h) } : {}),
+    };
+  }
+  return {
+    prompt: buildChatPrompt(input),
+    image_urls: imageUris,
+    image_size: gptImageSizeFromDims(baseDims),
+    quality: gptImageQuality(),
+    output_format: 'jpeg',
+    num_images: 1,
+  };
+}
+
+export async function submitChatVisualizationJob(
+  input: ChatVisualizeInput,
+): Promise<{ requestId: string }> {
+  const key = process.env.FAL_KEY;
+  if (!key) throw new Error('FAL_KEY не задан');
+  fal.config({ credentials: key });
+  const endpoint = RENDER_ENDPOINT;
+  const submitted = await fal.queue.submit(endpoint as never, {
+    // @fal-ai/client@1.10.1 ещё не типизирует gpt-image-2/edit.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    input: (await buildChatFalInput(input)) as any,
   });
   return { requestId: submitted.request_id };
 }
 
 export type GptImageJobState =
   | { status: 'in_progress' }
-  | { status: 'completed'; imageUrl: string }
+  | { status: 'completed'; imageUrl: string; sourceUrl: string }
   | { status: 'failed'; error: string };
 
 export async function pollGptImageJob(requestId: string): Promise<GptImageJobState> {
@@ -417,22 +566,24 @@ export async function pollGptImageJob(requestId: string): Promise<GptImageJobSta
   if (!key) throw new Error('FAL_KEY не задан');
   fal.config({ credentials: key });
 
-  const status = await fal.queue.status(RENDER_ENDPOINT, { requestId, logs: false });
+  const endpoint = RENDER_ENDPOINT;
+  const status = await fal.queue.status(endpoint as never, { requestId, logs: false });
   if (status.status !== 'COMPLETED') return { status: 'in_progress' };
 
   try {
-    const result = await fal.queue.result(RENDER_ENDPOINT, { requestId });
-    const url = result.data.images[0]?.url;
+    const result = await fal.queue.result(endpoint as never, { requestId });
+    const url = falImageUrl(result);
     if (!url) return { status: 'failed', error: 'fal: ответ без URL картинки' };
     try {
       const buf = await fetchToBuffer(url);
-      const mime = buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png' : 'image/jpeg';
+      const mime = imageMimeFromBytes(buf);
       return {
         status: 'completed',
         imageUrl: `data:${mime};base64,${buf.toString('base64')}`,
+        sourceUrl: url,
       };
     } catch {
-      return { status: 'completed', imageUrl: url };
+      return { status: 'completed', imageUrl: url, sourceUrl: url };
     }
   } catch (err) {
     return {
@@ -440,6 +591,28 @@ export async function pollGptImageJob(requestId: string): Promise<GptImageJobSta
       error: err instanceof Error ? err.message : 'fal: ошибка рендера',
     };
   }
+}
+
+function falImageUrl(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null;
+  const root = result as {
+    data?: { images?: Array<{ url?: unknown }> };
+    images?: Array<{ url?: unknown }>;
+  };
+  const url = root.data?.images?.[0]?.url ?? root.images?.[0]?.url;
+  return typeof url === 'string' && url ? url : null;
+}
+
+function imageMimeFromBytes(buf: Buffer): 'image/png' | 'image/jpeg' | 'image/webp' {
+  if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
+  if (
+    buf.length >= 12 &&
+    buf.toString('ascii', 0, 4) === 'RIFF' &&
+    buf.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  return 'image/jpeg';
 }
 
 // Без удалённого vision-провайдера endpoint масштаба остаётся рабочим и возвращает
@@ -527,7 +700,7 @@ ${hasTileReference ? `- Match IMAGE 2${opts?.tileName ? ` (${JSON.stringify(opts
     compositeDataUrl,
     ...(opts?.tileImageUrl ? [opts.tileImageUrl] : []),
   ];
-  const result = await fal.subscribe(RENDER_ENDPOINT, {
+  const result = await fal.subscribe(NANO_BANANA_ENDPOINT, {
     input: {
       prompt,
       image_urls: await Promise.all(imageUrls.map(toDataUri)),
