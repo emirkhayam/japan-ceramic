@@ -716,6 +716,7 @@ IMAGES 2..N are reference variations of ONE AND THE SAME tile product ${input.ti
 Keep the building/room geometry, camera angle, framing, field of view and lighting exactly as in IMAGE 1 unless the user explicitly asks otherwise.
 CHANGE ONLY what the user asks below. Every other surface of IMAGE 1 — walls, plaster, and any tile already applied in previous steps — must stay EXACTLY as it is in IMAGE 1. When the user says "also"/"тоже", they mean ADD to the existing result, not redo it.
 ONLY IF the user explicitly asks to change the tile or re-clad an already tiled area: fully replace the old tile with ${input.tileName} there — never mix two different tile products.${tileChanged}
+Render realistic thin grout joints between the tiles with correct even coursing, and clean cuts at every edge, opening and corner; the newly tiled surface must catch the same daylight, shadows and reflections as the rest of IMAGE 1.
 USER REQUEST (highest priority): ${JSON.stringify(input.userMessage)}
 Output only the final edited photo.`;
 }
