@@ -2,7 +2,7 @@
  * AI-ядро визуализатора. Основной рендер — gpt-image-2/edit через fal,
  * nano-banana-pro/edit остаётся запасной веткой, mock — локальным фолбэком.
  */
-import { fal } from '@fal-ai/client';
+import { ApiError, fal } from '@fal-ai/client';
 
 export type Provider = 'fal' | 'mock';
 export type Surface = 'floor' | 'wall' | 'mask' | 'facade';
@@ -383,6 +383,7 @@ function gptImageSizeFromDims(
   dims: { w: number; h: number } | null,
 ): GptImageSize {
   if (!dims || !(dims.w > 0) || !(dims.h > 0)) return 'auto';
+  if (Math.max(dims.w, dims.h) / Math.min(dims.w, dims.h) > 3) return 'auto';
   const scale = 1536 / Math.max(dims.w, dims.h);
   const toValidSide = (side: number) =>
     Math.max(512, Math.round((side * scale) / 16) * 16);
@@ -394,6 +395,7 @@ function gptImageSizeFromDims(
 
 async function buildFalInput(
   input: VisualizeInput,
+  opts?: { forceAutoSize?: boolean },
 ): Promise<GptImageEditInput | NanoBananaEditInput> {
   if (input.tileImageUrls.length === 0) {
     throw new Error('Не передано ни одного изображения плитки');
@@ -415,7 +417,7 @@ async function buildFalInput(
       prompt: buildPrompt(input),
       image_urls: imageUris,
       ...(maskImageUrl ? { mask_image_url: maskImageUrl } : {}),
-      image_size: gptImageSizeFromDims(roomDims),
+      image_size: opts?.forceAutoSize ? 'auto' : gptImageSizeFromDims(roomDims),
       quality: gptImageQuality(),
       output_format: 'jpeg',
       num_images: 1,
@@ -478,12 +480,24 @@ export async function submitGptImageJob(
   if (!key) throw new Error('FAL_KEY не задан');
   fal.config({ credentials: key });
   const endpoint = RENDER_ENDPOINT;
-  const submitted = await fal.queue.submit(endpoint as never, {
-    // @fal-ai/client@1.10.1 ещё не типизирует gpt-image-2/edit.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input: (await buildFalInput(input)) as any,
-  });
-  return { requestId: submitted.request_id };
+  const submit = async (forceAutoSize = false) =>
+    fal.queue.submit(endpoint as never, {
+      // @fal-ai/client@1.10.1 ещё не типизирует gpt-image-2/edit.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      input: (await buildFalInput(input, { forceAutoSize })) as any,
+    });
+  try {
+    const submitted = await submit();
+    return { requestId: submitted.request_id };
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const forceAutoSize = RENDER_MODEL !== 'nano-banana';
+    if (forceAutoSize) {
+      console.warn('[submitGptImageJob] retrying with image_size:auto');
+    }
+    const submitted = await submit(forceAutoSize);
+    return { requestId: submitted.request_id };
+  }
 }
 
 export type ChatVisualizeInput = {
@@ -606,13 +620,33 @@ export async function chatOrchestrate(
   if (!key) throw new Error('FAL_KEY не задан');
   fal.config({ credentials: key });
 
-  const result = (await fal.subscribe(CHAT_ENDPOINT as never, {
-    input: {
-      model: CHAT_MODEL,
-      prompt: buildChatOrchestratorPrompt(input),
-    } as never,
-    logs: false,
-  })) as unknown;
+  // openrouter/router периодически даёт транзиентный блип (~1 из 4) — одна
+  // тихая повторная попытка прячет его от клиента; только если и она упала —
+  // мягко деградируем в текстовый ответ (без слепой платной генерации).
+  const callOrchestrator = () =>
+    fal.subscribe(CHAT_ENDPOINT as never, {
+      input: {
+        model: CHAT_MODEL,
+        prompt: buildChatOrchestratorPrompt(input),
+      } as never,
+      logs: false,
+    }) as unknown;
+
+  let result: unknown;
+  try {
+    result = await callOrchestrator();
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      result = await callOrchestrator();
+    } catch (err) {
+      console.error('[chatOrchestrate] openrouter/router недоступен после ретрая:', err);
+      return {
+        action: 'reply',
+        reply: 'Секунду, связь с ассистентом подвисла — повторите запрос.',
+      };
+    }
+  }
   const root =
     result !== null && typeof result === 'object'
       ? (result as { data?: unknown; output?: unknown })
@@ -688,6 +722,7 @@ Output only the final edited photo.`;
 
 async function buildChatFalInput(
   input: ChatVisualizeInput,
+  opts?: { forceAutoSize?: boolean },
 ): Promise<GptImageEditInput | NanoBananaEditInput> {
   if (input.tileImageUrls.length === 0) {
     throw new Error('Не передано ни одного изображения плитки');
@@ -706,7 +741,7 @@ async function buildChatFalInput(
   return {
     prompt: buildChatPrompt(input),
     image_urls: imageUris,
-    image_size: gptImageSizeFromDims(baseDims),
+    image_size: opts?.forceAutoSize ? 'auto' : gptImageSizeFromDims(baseDims),
     quality: gptImageQuality(),
     output_format: 'jpeg',
     num_images: 1,
@@ -720,12 +755,24 @@ export async function submitChatVisualizationJob(
   if (!key) throw new Error('FAL_KEY не задан');
   fal.config({ credentials: key });
   const endpoint = RENDER_ENDPOINT;
-  const submitted = await fal.queue.submit(endpoint as never, {
-    // @fal-ai/client@1.10.1 ещё не типизирует gpt-image-2/edit.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input: (await buildChatFalInput(input)) as any,
-  });
-  return { requestId: submitted.request_id };
+  const submit = async (forceAutoSize = false) =>
+    fal.queue.submit(endpoint as never, {
+      // @fal-ai/client@1.10.1 ещё не типизирует gpt-image-2/edit.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      input: (await buildChatFalInput(input, { forceAutoSize })) as any,
+    });
+  try {
+    const submitted = await submit();
+    return { requestId: submitted.request_id };
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const forceAutoSize = RENDER_MODEL !== 'nano-banana';
+    if (forceAutoSize) {
+      console.warn('[submitChatVisualizationJob] retrying with image_size:auto');
+    }
+    const submitted = await submit(forceAutoSize);
+    return { requestId: submitted.request_id };
+  }
 }
 
 export type GptImageJobState =
@@ -733,13 +780,46 @@ export type GptImageJobState =
   | { status: 'completed'; imageUrl: string; sourceUrl: string }
   | { status: 'failed'; error: string };
 
+function falQueueErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (
+    err !== null &&
+    typeof err === 'object' &&
+    typeof (err as { message?: unknown }).message === 'string'
+  ) {
+    return (err as { message: string }).message;
+  }
+  return 'fal: ошибка рендера';
+}
+
+function falQueueErrorState(err: unknown): GptImageJobState {
+  const status =
+    err instanceof ApiError
+      ? err.status
+      : err !== null &&
+          typeof err === 'object' &&
+          typeof (err as { status?: unknown }).status === 'number'
+        ? (err as { status: number }).status
+        : null;
+  const message = falQueueErrorMessage(err);
+  if ((status !== null && status >= 400 && status < 500) || /HTTP 4\d\d/i.test(message)) {
+    return { status: 'failed', error: message };
+  }
+  return { status: 'in_progress' };
+}
+
 export async function pollGptImageJob(requestId: string): Promise<GptImageJobState> {
   const key = process.env.FAL_KEY;
   if (!key) throw new Error('FAL_KEY не задан');
   fal.config({ credentials: key });
 
   const endpoint = RENDER_ENDPOINT;
-  const status = await fal.queue.status(endpoint as never, { requestId, logs: false });
+  let status;
+  try {
+    status = await fal.queue.status(endpoint as never, { requestId, logs: false });
+  } catch (err) {
+    return falQueueErrorState(err);
+  }
   if (status.status !== 'COMPLETED') return { status: 'in_progress' };
 
   try {
@@ -758,10 +838,7 @@ export async function pollGptImageJob(requestId: string): Promise<GptImageJobSta
       return { status: 'completed', imageUrl: url, sourceUrl: url };
     }
   } catch (err) {
-    return {
-      status: 'failed',
-      error: err instanceof Error ? err.message : 'fal: ошибка рендера',
-    };
+    return falQueueErrorState(err);
   }
 }
 

@@ -114,6 +114,9 @@ function waMessageLink(
 
 function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
+  if (/403|404|Не удалось загрузить изображение/i.test(raw)) {
+    return 'Не удалось получить картинку. Нажмите «Попробовать снова».';
+  }
   if (/fetch failed|timeout|ETIMEDOUT|ECONN|network|502|503|504|UND_ERR/i.test(raw)) {
     return 'Сеть подвисла при обработке. Нажмите «Попробовать снова» — обычно со второго раза проходит.';
   }
@@ -158,7 +161,7 @@ function VisualizeChat() {
   );
   const conversationBaseImage = useMemo(() => {
     const resultImage =
-      lastResultTurn?.result?.sourceUrl || lastResultTurn?.result?.imageUrl;
+      lastResultTurn?.result?.imageUrl || lastResultTurn?.result?.sourceUrl;
     if (resultImage) return resultImage;
     return (
       [...turns]
