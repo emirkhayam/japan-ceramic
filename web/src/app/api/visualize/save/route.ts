@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { supabaseAdmin } from "@/lib/supabase";
+import { saveUpload } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,22 +43,18 @@ export async function POST(req: Request) {
 
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const filename = `visualizations/${user.id}/${stamp}.webp`;
-    const { error } = await supabaseAdmin.storage
-      .from("uploads")
-      .upload(filename, webp, { contentType: "image/webp", upsert: false });
-    if (error) throw new Error(error.message);
+    const publicUrl = await saveUpload(filename, webp);
 
-    const { data: pub } = supabaseAdmin.storage.from("uploads").getPublicUrl(filename);
     const saved = await prisma.savedVisualization.create({
       data: {
         userId: user.id,
-        imageUrl: pub.publicUrl,
+        imageUrl: publicUrl,
         tileSlug: tileSlug ?? null,
         tileName: tileName ?? null,
         surface: surface ?? null,
       },
     });
-    return NextResponse.json({ ok: true, id: saved.id, url: pub.publicUrl });
+    return NextResponse.json({ ok: true, id: saved.id, url: publicUrl });
   } catch (err) {
     console.error("[visualize:save]", err);
     return NextResponse.json({ error: err instanceof Error ? err.message : "save failed" }, { status: 500 });

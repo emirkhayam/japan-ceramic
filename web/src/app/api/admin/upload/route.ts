@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { getSession } from "@/lib/auth";
-import { supabaseAdmin } from "@/lib/supabase";
+import { saveUpload } from "@/lib/storage";
+
+export const runtime = "nodejs";
 
 // Сжатие исходников: ресайз до 2000px + WebP. Тяжёлые фото (10–20 МБ) → ~0.3–0.6 МБ,
 // чтобы next/image не давился оригиналами и каталог не лагал.
@@ -55,21 +57,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { error } = await supabaseAdmin.storage
-    .from("uploads")
-    .upload(filename, buffer, {
-      contentType,
-      upsert: false,
-    });
-
-  if (error) {
-    console.error("Supabase upload error:", error);
-    return NextResponse.json({ error: `Ошибка загрузки: ${error.message}` }, { status: 500 });
+  void contentType; // тип уже зашит в расширение файла; nginx отдаёт по нему
+  try {
+    const url = await saveUpload(filename, buffer);
+    return NextResponse.json({ url });
+  } catch (e) {
+    console.error("Upload write failed:", e);
+    const message = e instanceof Error ? e.message : "не удалось сохранить файл";
+    return NextResponse.json({ error: `Ошибка загрузки: ${message}` }, { status: 500 });
   }
-
-  const { data: urlData } = supabaseAdmin.storage
-    .from("uploads")
-    .getPublicUrl(filename);
-
-  return NextResponse.json({ url: urlData.publicUrl });
 }
