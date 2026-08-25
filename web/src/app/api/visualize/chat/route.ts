@@ -7,7 +7,11 @@ import {
 } from '@/lib/ai';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { checkDailyLimit, checkMonthlyBudget } from '@/lib/limits';
+import {
+  DAILY_VISUALIZATION_LIMIT,
+  remainingDailyGenerations,
+  remainingMonthlyBudget,
+} from '@/lib/limits';
 import { resolveTileSize } from '@/lib/tile';
 import { getTileById } from '@/lib/tiles';
 import {
@@ -18,14 +22,21 @@ import {
 } from '@/lib/visualization';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 type Body = {
   baseImage?: unknown;
+  sceneImages?: unknown;
   tileId?: unknown;
+  tileImages?: unknown;
+  tileName?: unknown;
+  tileWmm?: unknown;
+  tileHmm?: unknown;
+  referenceImage?: unknown;
   message?: unknown;
   tileChanged?: unknown;
   history?: unknown;
+  strongEdit?: unknown;
 };
 
 type HistoryItem = {
@@ -53,6 +64,19 @@ function validateHistory(value: unknown): HistoryItem[] {
   return history;
 }
 
+function normalizeImageArray(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    return null;
+  }
+  return value.map((item) => item.trim()).filter(Boolean);
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
 export async function POST(req: Request) {
   const user = await getSession();
   if (!user) {
@@ -76,15 +100,49 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Некорректный JSON' }, { status: 400 });
   }
 
-  const baseImage =
-    typeof body.baseImage === 'string' ? body.baseImage.trim() : '';
+  let sceneImages: string[];
+  if (body.sceneImages === undefined) {
+    const baseImage =
+      typeof body.baseImage === 'string' ? body.baseImage.trim() : '';
+    sceneImages = baseImage ? [baseImage] : [];
+  } else {
+    const normalizedSceneImages = normalizeImageArray(body.sceneImages);
+    if (!normalizedSceneImages) {
+      return NextResponse.json(
+        { error: 'sceneImages должен быть массивом строк' },
+        { status: 400 },
+      );
+    }
+    sceneImages = normalizedSceneImages.slice(0, 4);
+  }
+
   const tileId = typeof body.tileId === 'string' ? body.tileId.trim() : '';
+  const normalizedTileImages =
+    body.tileImages === undefined ? [] : normalizeImageArray(body.tileImages);
+  if (normalizedTileImages === null) {
+    return NextResponse.json(
+      { error: 'tileImages должен быть массивом строк' },
+      { status: 400 },
+    );
+  }
+  const customTileName =
+    typeof body.tileName === 'string' ? body.tileName.trim() : '';
+  const tileWmm = positiveNumber(body.tileWmm);
+  const tileHmm = positiveNumber(body.tileHmm);
+  const referenceImage =
+    typeof body.referenceImage === 'string'
+      ? body.referenceImage.trim() || undefined
+      : undefined;
   const message = typeof body.message === 'string' ? body.message.trim() : '';
   const tileChanged = body.tileChanged === true;
+  const strongEdit = body.strongEdit === true;
   const history = validateHistory(body.history);
 
-  if (!tileId) {
-    return NextResponse.json({ error: 'Выберите плитку' }, { status: 400 });
+  if (!tileId && normalizedTileImages.length === 0) {
+    return NextResponse.json(
+      { error: 'Выберите плитку или загрузите фото плитки' },
+      { status: 400 },
+    );
   }
   if (message.length < 1 || message.length > 500) {
     return NextResponse.json(
@@ -93,47 +151,61 @@ export async function POST(req: Request) {
     );
   }
 
-  const dbProduct = await prisma.product.findFirst({
-    where: { OR: [{ slug: tileId }, { id: tileId }] },
-    include: {
-      category: true,
-      images: { orderBy: { sortOrder: 'asc' }, take: 4 },
-    },
-  });
-  const staticTile = dbProduct ? undefined : getTileById(tileId);
   const origin = req.headers.get('origin') || new URL(req.url).origin;
 
   let tileName: string;
   let tileImageUrls: string[];
   let tileKey: string;
-  let tileDims: { wmm: number; hmm: number };
+  let tileDims: { wmm: number; hmm: number } | undefined;
 
-  if (dbProduct) {
-    tileDims = toTileDims(resolveTileSize(dbProduct.dimensions, dbProduct.name));
-    tileName = dbProduct.name;
-    tileImageUrls = dbProduct.images.map((image) =>
-      resolveImageUrl(image.imageUrl, origin),
-    );
-    if (tileImageUrls.length === 0) {
+  if (tileId) {
+    const dbProduct = await prisma.product.findFirst({
+      where: { OR: [{ slug: tileId }, { id: tileId }] },
+      include: {
+        category: true,
+        images: { orderBy: { sortOrder: 'asc' }, take: 4 },
+      },
+    });
+    const staticTile = dbProduct ? undefined : getTileById(tileId);
+
+    if (dbProduct) {
+      tileDims = toTileDims(
+        resolveTileSize(dbProduct.dimensions, dbProduct.name),
+      );
+      tileName = dbProduct.name;
+      tileImageUrls = dbProduct.images.map((image) =>
+        resolveImageUrl(image.imageUrl, origin),
+      );
+      if (tileImageUrls.length === 0) {
+        return NextResponse.json(
+          { error: 'У товара нет изображения для визуализации' },
+          { status: 400 },
+        );
+      }
+      tileKey = dbProduct.slug;
+    } else if (staticTile) {
+      const dimensionsMm = staticSizeToMillimeters(staticTile.size);
+      tileDims = toTileDims(resolveTileSize(dimensionsMm, staticTile.name));
+      tileName = staticTile.name;
+      tileImageUrls = [resolveImageUrl(staticTile.image, origin)];
+      tileKey = staticTile.id;
+    } else {
       return NextResponse.json(
-        { error: 'У товара нет изображения для визуализации' },
+        { error: `Не удалось найти плитку: ${tileId}` },
         { status: 400 },
       );
     }
-    tileKey = dbProduct.slug;
-  } else if (staticTile) {
-    const dimensionsMm = staticSizeToMillimeters(staticTile.size);
-    tileDims = toTileDims(resolveTileSize(dimensionsMm, staticTile.name));
-    tileName = staticTile.name;
-    tileImageUrls = [resolveImageUrl(staticTile.image, origin)];
-    tileKey = staticTile.id;
   } else {
-    return NextResponse.json(
-      { error: `Не удалось найти плитку: ${tileId}` },
-      { status: 400 },
+    tileName = customTileName || 'Своя плитка';
+    tileImageUrls = normalizedTileImages.map((image) =>
+      resolveImageUrl(image, origin),
     );
+    tileKey = 'custom';
+    tileDims =
+      tileWmm && tileHmm ? { wmm: tileWmm, hmm: tileHmm } : undefined;
   }
 
+  const hasBaseImage = sceneImages.length > 0;
   let decision: ChatDecision;
   try {
     decision = await chatOrchestrate({
@@ -141,7 +213,7 @@ export async function POST(req: Request) {
       history,
       tileName,
       tileDims,
-      hasBaseImage: Boolean(baseImage),
+      hasBaseImage,
       tileChanged,
     });
   } catch (err) {
@@ -158,54 +230,83 @@ export async function POST(req: Request) {
     return NextResponse.json({ reply: decision.reply });
   }
 
-  if (!baseImage) {
+  if (!hasBaseImage) {
     return NextResponse.json({
-      reply: 'Прикрепите фото помещения или фасада, чтобы запустить визуализацию.',
+      reply: 'Прикрепите фото помещения или фасада',
     });
   }
 
-  if (user.role !== 'admin') {
-    const dailyLimitError = await checkDailyLimit(user.id);
-    if (dailyLimitError) {
-      return NextResponse.json({ reply: dailyLimitError });
+  const [dailyRemaining, monthlyRemaining] = await Promise.all([
+    remainingDailyGenerations(user.id),
+    remainingMonthlyBudget(),
+  ]);
+  const requestedJobs = sceneImages.length;
+  const remaining = Math.min(
+    dailyRemaining,
+    monthlyRemaining ?? requestedJobs,
+  );
+  if (remaining <= 0) {
+    const limitReply =
+      dailyRemaining <= 0
+        ? `Дневной лимит визуализаций исчерпан (${DAILY_VISUALIZATION_LIMIT} в день). Попробуйте завтра.`
+        : 'Месячный лимит AI-генераций исчерпан. Обратитесь к администратору.';
+    return NextResponse.json({ reply: limitReply });
+  }
+
+  const launch = Math.min(requestedJobs, remaining);
+  const limitNotice =
+    launch < requestedJobs
+      ? `Сегодня осталось ${launch} генераций — сделаю ${launch} из ${requestedJobs} ракурсов.`
+      : '';
+  const reply = [decision.reply.trim(), limitNotice].filter(Boolean).join(' ');
+  const jobs: { requestId: string; sceneIndex: number }[] = [];
+  let lastSubmitError: unknown;
+
+  for (let sceneIndex = 0; sceneIndex < launch; sceneIndex += 1) {
+    try {
+      const renderJob = await submitChatVisualizationJob({
+        baseImageUrl: sceneImages[sceneIndex],
+        tileImageUrls,
+        tileName,
+        tileDims,
+        referenceImageUrl: referenceImage,
+        userMessage: decision.imagePrompt ?? message,
+        tileChanged,
+        strongEdit,
+      });
+      jobs.push({ requestId: renderJob.requestId, sceneIndex });
+      await logVisualization({
+        userId: user.id,
+        tileSlug: tileKey,
+        tileName,
+        surface: 'chat',
+        provider: RENDER_PROVIDER_LABEL,
+      });
+    } catch (err) {
+      lastSubmitError = err;
+      console.error(
+        `[visualize:chat] submit failed for scene ${sceneIndex}:`,
+        err,
+      );
     }
   }
 
-  const monthlyBudgetError = await checkMonthlyBudget();
-  if (monthlyBudgetError) {
-    return NextResponse.json({ reply: monthlyBudgetError });
-  }
-
-  try {
-    const renderJob = await submitChatVisualizationJob({
-      baseImageUrl: baseImage,
-      tileImageUrls,
-      tileName,
-      tileDims,
-      userMessage: decision.imagePrompt ?? message,
-      tileChanged,
-    });
-    await logVisualization({
-      userId: user.id,
-      tileSlug: tileKey,
-      tileName,
-      surface: 'chat',
-      provider: RENDER_PROVIDER_LABEL,
-    });
-    return NextResponse.json({
-      async: true,
-      requestId: renderJob.requestId,
-      reply: decision.reply,
-      provider: RENDER_PROVIDER_LABEL,
-      tile: { id: tileKey, name: tileName },
-    });
-  } catch (err) {
-    console.error('[visualize:chat] submit failed:', err);
-    const message =
-      err instanceof Error ? err.message : 'не удалось поставить рендер в очередь';
+  if (jobs.length === 0) {
+    const errorMessage =
+      lastSubmitError instanceof Error
+        ? lastSubmitError.message
+        : 'не удалось поставить рендер в очередь';
     return NextResponse.json(
-      { error: `fal (${RENDER_PROVIDER_LABEL}): ${message}` },
+      { error: `fal (${RENDER_PROVIDER_LABEL}): ${errorMessage}` },
       { status: 502 },
     );
   }
+
+  return NextResponse.json({
+    async: true,
+    jobs,
+    reply,
+    provider: RENDER_PROVIDER_LABEL,
+    tile: { id: tileKey, name: tileName },
+  });
 }

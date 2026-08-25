@@ -505,8 +505,10 @@ export type ChatVisualizeInput = {
   tileImageUrls: string[];
   tileName: string;
   tileDims?: { wmm: number; hmm: number };
+  referenceImageUrl?: string;
   userMessage: string;
   tileChanged?: boolean;
+  strongEdit?: boolean;
 };
 
 export type ChatDecision = {
@@ -609,7 +611,7 @@ function requireBaseImage(
   if (decision.action !== 'generate' || hasBaseImage) return decision;
   return {
     action: 'reply',
-    reply: 'Пришлите фото помещения или фасада, и я запущу визуализацию.',
+    reply: 'Прикрепите фото помещения или фасада',
   };
 }
 
@@ -700,6 +702,8 @@ export async function chatOrchestrate(
 }
 
 function buildChatPrompt(input: ChatVisualizeInput): string {
+  const tileReferenceEnd =
+    1 + input.tileImageUrls.slice(0, input.referenceImageUrl ? 3 : 4).length;
   const tileDimensions = input.tileDims
     ? `, exactly ${input.tileDims.wmm}×${input.tileDims.hmm} mm each`
     : '';
@@ -709,14 +713,21 @@ function buildChatPrompt(input: ChatVisualizeInput): string {
   const tileChanged = input.tileChanged
     ? ` The tile product has just been CHANGED by the user: replace ALL previously applied tile in the scene with ${input.tileName}.`
     : '';
+  const styleReference = input.referenceImageUrl
+    ? `\nThe LAST image is a desired-style reference (a finished project the client likes): borrow its layout, mood and composition ideas, but KEEP IMAGE 1's real building geometry, camera and framing; do NOT copy its tile unless it matches the selected tile.`
+    : '';
+  const strongEdit = input.strongEdit
+    ? `\nCRITICAL: the previous attempt returned the image almost unchanged. You MUST now make the requested tiling change clearly and visibly across the target area.`
+    : '';
 
   return `You are a photorealistic tile visualization assistant for a ceramic tile store.
 IMAGE 1 is the current state of the client's scene (a photo or the previous edit of this very scene) — continue editing this exact scene.
-IMAGES 2..N are reference variations of ONE AND THE SAME tile product ${input.tileName}${tileDimensions}. NEVER substitute a different or generic tile. Real tiles vary naturally in tone and relief between individual tiles — no visible cloning.${shapeRule}
+IMAGES 2..${tileReferenceEnd} are reference photos of ONE AND THE SAME tile to apply (whether from catalog or the client's own tile photo): ${input.tileName}${tileDimensions}. NEVER substitute a different tile. Real tiles vary naturally in tone and relief between individual tiles — no visible cloning.${shapeRule}${styleReference}
 Keep the building/room geometry, camera angle, framing, field of view and lighting exactly as in IMAGE 1 unless the user explicitly asks otherwise.
 CHANGE ONLY what the user asks below. Every other surface of IMAGE 1 — walls, plaster, and any tile already applied in previous steps — must stay EXACTLY as it is in IMAGE 1. When the user says "also"/"тоже", they mean ADD to the existing result, not redo it.
 ONLY IF the user explicitly asks to change the tile or re-clad an already tiled area: fully replace the old tile with ${input.tileName} there — never mix two different tile products.${tileChanged}
 Render realistic thin grout joints between the tiles with correct even coursing, and clean cuts at every edge, opening and corner; the newly tiled surface must catch the same daylight, shadows and reflections as the rest of IMAGE 1.
+You MUST visibly apply the tile to the requested area. NEVER output IMAGE 1 unchanged — the applied tile must be clearly visible in the result.${strongEdit}
 USER REQUEST (highest priority): ${JSON.stringify(input.userMessage)}
 Output only the final edited photo.`;
 }
@@ -728,8 +739,16 @@ async function buildChatFalInput(
   if (input.tileImageUrls.length === 0) {
     throw new Error('Не передано ни одного изображения плитки');
   }
+  const tileImageUrls = input.tileImageUrls.slice(
+    0,
+    input.referenceImageUrl ? 3 : 4,
+  );
   const imageUris = await Promise.all(
-    [input.baseImageUrl, ...input.tileImageUrls].map(toDataUri),
+    [
+      input.baseImageUrl,
+      ...tileImageUrls,
+      ...(input.referenceImageUrl ? [input.referenceImageUrl] : []),
+    ].map(toDataUri),
   );
   const baseDims = imageDimsFromDataUri(imageUris[0]);
   if (RENDER_MODEL === 'nano-banana') {
@@ -763,7 +782,7 @@ export async function submitChatVisualizationJob(
       input: (await buildChatFalInput(input, { forceAutoSize })) as any,
     });
   try {
-    const submitted = await submit();
+    const submitted = await submit(input.strongEdit === true);
     return { requestId: submitted.request_id };
   } catch {
     await new Promise((resolve) => setTimeout(resolve, 800));
