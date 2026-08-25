@@ -138,12 +138,6 @@ export async function POST(req: Request) {
   const strongEdit = body.strongEdit === true;
   const history = validateHistory(body.history);
 
-  if (!tileId && normalizedTileImages.length === 0) {
-    return NextResponse.json(
-      { error: 'Выберите плитку или загрузите фото плитки' },
-      { status: 400 },
-    );
-  }
   if (message.length < 1 || message.length > 500) {
     return NextResponse.json(
       { error: 'Сообщение должно содержать от 1 до 500 символов' },
@@ -153,9 +147,11 @@ export async function POST(req: Request) {
 
   const origin = req.headers.get('origin') || new URL(req.url).origin;
 
-  let tileName: string;
-  let tileImageUrls: string[];
-  let tileKey: string;
+  // Плитка опциональна для входа/вопросов; обязательна только для рендера.
+  const hasTile = Boolean(tileId) || normalizedTileImages.length > 0;
+  let tileName = '';
+  let tileImageUrls: string[] = [];
+  let tileKey = '';
   let tileDims: { wmm: number; hmm: number } | undefined;
 
   if (tileId) {
@@ -195,7 +191,7 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-  } else {
+  } else if (normalizedTileImages.length > 0) {
     tileName = customTileName || 'Своя плитка';
     tileImageUrls = normalizedTileImages.map((image) =>
       resolveImageUrl(image, origin),
@@ -213,6 +209,7 @@ export async function POST(req: Request) {
       history,
       tileName,
       tileDims,
+      hasTile,
       hasBaseImage,
       tileChanged,
     });
@@ -230,9 +227,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ reply: decision.reply });
   }
 
-  if (!hasBaseImage) {
+  // Рендер требует и плитку, и фото объекта. Оркестратор уже отсекает эти случаи
+  // (переводит в reply), но подстраховываемся здесь, чтобы не уйти в сабмит зря.
+  if (!hasTile || !hasBaseImage) {
+    const missing: string[] = [];
+    if (!hasTile) {
+      missing.push('выберите плитку (кнопка «Плитка» вверху) или загрузите фото своей');
+    }
+    if (!hasBaseImage) missing.push('прикрепите фото объекта');
     return NextResponse.json({
-      reply: 'Прикрепите фото помещения или фасада',
+      reply: `Чтобы сделать визуализацию, ${missing.join(' и ')}.`,
     });
   }
 

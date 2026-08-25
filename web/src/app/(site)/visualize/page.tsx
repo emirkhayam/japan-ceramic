@@ -76,7 +76,7 @@ type TileSelection =
 type TurnRequest = {
   sceneImages: string[];
   message: string;
-  tile: Exclude<TileSelection, null>;
+  tile: TileSelection;
   referenceImage?: string;
   tileChanged: boolean;
   history: ChatHistoryMessage[];
@@ -173,7 +173,8 @@ async function responseError(response: Response): Promise<string> {
     : `Сервер вернул ${response.status}`;
 }
 
-function tileName(selection: Exclude<TileSelection, null>): string {
+function tileName(selection: TileSelection): string {
+  if (!selection) return 'выбранная плитка';
   return selection.kind === 'catalog'
     ? selection.tile.name
     : selection.name?.trim() || 'Своя плитка';
@@ -357,9 +358,10 @@ function VisualizeChat() {
     tileSelection &&
       (tileSelection.kind === 'catalog' || tileSelection.images.length > 0),
   );
+  // Плитка больше не обязательна для отправки: можно задать вопрос без неё,
+  // а требование плитки для рендера проверяет бэкенд (мягкой подсказкой).
   const canSend = Boolean(
-    hasValidTile &&
-      draft.trim() &&
+    draft.trim() &&
       draft.trim().length <= 500 &&
       !isGenerating &&
       !isNormalizing,
@@ -381,9 +383,9 @@ function VisualizeChat() {
         if (initialTile) {
           setLastCatalogTile(initialTile);
           setTileSelection({ kind: 'catalog', tile: initialTile });
-        } else {
-          setTilePickerOpen(true);
         }
+        // Плитка опциональна: модалку сама не открываем — пользователь
+        // вызывает её кнопкой «Выбрать плитку», когда захочет визуализацию.
         setTilesLoading(false);
       })
       .catch(() => {
@@ -458,8 +460,9 @@ function VisualizeChat() {
     sceneImages = request.sceneImages,
     strongEdit = false,
   ): Promise<ChatResponse> {
-    const tileBody =
-      request.tile.kind === 'catalog'
+    const tileBody = !request.tile
+      ? { tileId: null }
+      : request.tile.kind === 'catalog'
         ? { tileId: request.tile.tile.slug }
         : {
             tileId: null,
@@ -680,10 +683,15 @@ function VisualizeChat() {
   }
 
   function sendMessage() {
-    if (!canSend || submissionLockRef.current || !tileSelection) return;
-    if (tileSelection.kind === 'custom' && tileSelection.images.length === 0) {
-      return;
-    }
+    if (!canSend || submissionLockRef.current) return;
+    // Своя плитка без единого фото ещё не годна для рендера — но отправку не
+    // блокируем: считаем её «плитка не выбрана», бэкенд подскажет при попытке.
+    const activeTile =
+      tileSelection &&
+      tileSelection.kind === 'custom' &&
+      tileSelection.images.length === 0
+        ? null
+        : tileSelection;
     const message = draft.trim();
     const newSceneImages = [...sceneAttachments];
     const sceneImages =
@@ -698,7 +706,7 @@ function VisualizeChat() {
     const request: TurnRequest = {
       sceneImages,
       message,
-      tile: tileSelection,
+      tile: activeTile,
       referenceImage: referenceAttachment || undefined,
       tileChanged: tileChangedPending,
       history: buildThreadHistory(turns),
@@ -806,10 +814,12 @@ function VisualizeChat() {
         body: JSON.stringify({
           imageUrl: result.imageUrl,
           tileSlug:
-            turn.request.tile.kind === 'catalog'
+            turn.request.tile?.kind === 'catalog'
               ? turn.request.tile.tile.slug
               : 'custom',
-          tileName: tileName(turn.request.tile),
+          tileName: turn.request.tile
+            ? tileName(turn.request.tile)
+            : 'Своя визуализация',
           surface: 'chat',
         }),
       });
@@ -1053,10 +1063,10 @@ function VisualizeChat() {
         : 'Каталог или свои фото плитки';
   const sendHint = isGenerating
     ? 'Ассистент обрабатывает сообщение'
-    : !hasValidTile
-      ? 'Сначала выберите плитку или загрузите её фото'
-      : !draft.trim()
-        ? 'Напишите задачу или задайте вопрос о визуализации'
+    : !draft.trim()
+      ? 'Напишите задачу или задайте вопрос — плитку можно выбрать позже'
+      : sceneAttachments.length > 0 && !hasValidTile
+        ? 'Для визуализации выберите плитку — кнопка «Плитка» вверху'
         : sceneAttachments.length > 0
           ? `Будет создано до ${sceneAttachments.length} визуализаций`
           : conversationBaseImage
@@ -1275,6 +1285,21 @@ function VisualizeChat() {
 
           {attachmentError && (
             <p className="mb-2 text-xs text-red-300">{attachmentError}</p>
+          )}
+
+          {!hasValidTile && (
+            <button
+              type="button"
+              onClick={() => {
+                setTilePickerMode(tileSelection?.kind ?? 'catalog');
+                setTilePickerOpen(true);
+              }}
+              disabled={isGenerating}
+              className="mb-2 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-gold-500/40 bg-gold-500/10 px-3 py-2.5 text-sm font-medium text-gold-300 transition hover:border-gold-500/60 hover:bg-gold-500/15 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              <ImagePlus size={16} />
+              Выбрать плитку из каталога или загрузить свою
+            </button>
           )}
 
           <div className="mb-2 flex flex-wrap gap-2">
@@ -1660,9 +1685,10 @@ function AssistantIntro({
           AI-визуализатор
         </div>
         <p className="text-sm leading-6 text-mist-200 sm:text-[15px]">
-          Выберите плитку из каталога или загрузите свою. Можно прикрепить до
-          четырёх фото помещения или фасада — для каждого ракурса появится свой
-          результат. Дальше выберите удачный вариант и правьте его текстом.
+          Опишите задачу или задайте вопрос — можно начать без выбора плитки. Для
+          визуализации выберите плитку из каталога или загрузите свою и прикрепите
+          до четырёх фото объекта: для каждого ракурса появится свой результат.
+          Дальше правьте удачный вариант текстом.
         </p>
         <p className="mt-3 border-t border-white/[.08] pt-3 text-[11px] leading-5 text-mist-400">
           Визуализация создана ИИ и носит ориентировочный характер: реальные цвет,

@@ -522,6 +522,7 @@ export type ChatOrchestrateInput = {
   history: { role: 'user' | 'assistant'; text: string }[];
   tileName: string;
   tileDims?: { wmm: number; hmm: number };
+  hasTile: boolean;
   hasBaseImage: boolean;
   tileChanged?: boolean;
 };
@@ -548,11 +549,12 @@ function buildChatOrchestratorPrompt(input: ChatOrchestrateInput): string {
 - Уточняющий вопрос задавай ТОЛЬКО если без него нельзя сгенерировать, максимум один вопрос.
 - Если запрос понятен — сразу action=generate.
 - НИКОГДА не предлагай другую плитку вместо выбранной.
+- Если плитка ещё не выбрана (hasTile=false) — генерировать нельзя. На вопросы отвечай текстом; если клиент просит визуализацию — дружелюбно попроси сначала выбрать плитку из каталога или загрузить фото своей (кнопка «Плитка» вверху).
 - Если фото ещё не приложено (hasBaseImage=false) — генерировать нельзя, попроси прислать фото.
 - imagePrompt пиши как самодостаточное задание image-модели: что изменить относительно ТЕКУЩЕГО состояния сцены, сохраняя всё остальное. Помни: «тоже» и «ещё» означают добавить к уже сделанному, а не переделывать существующий результат.
 
 Контекст:
-- Выбранная плитка: ${input.tileName}${tileDimensions}.
+- Выбранная плитка: ${input.hasTile ? `${input.tileName}${tileDimensions}` : 'ещё не выбрана'}.
 - Фото приложено: ${input.hasBaseImage ? 'да' : 'нет'}.${tileChangedContext}
 
 История диалога:
@@ -615,6 +617,26 @@ function requireBaseImage(
   };
 }
 
+// Плитка теперь опциональна для входа/вопросов, но обязательна для рендера:
+// если модель решила генерировать без выбранной плитки — мягко возвращаем к выбору.
+function requireTile(decision: ChatDecision, hasTile: boolean): ChatDecision {
+  if (decision.action !== 'generate' || hasTile) return decision;
+  return {
+    action: 'reply',
+    reply:
+      'Чтобы сделать визуализацию, выберите плитку из каталога или загрузите фото своей — кнопка «Плитка» вверху.',
+  };
+}
+
+// Тайл-гейт приоритетнее (выбор плитки — первый шаг); затем гейт фото.
+function gateDecision(
+  decision: ChatDecision,
+  hasTile: boolean,
+  hasBaseImage: boolean,
+): ChatDecision {
+  return requireBaseImage(requireTile(decision, hasTile), hasBaseImage);
+}
+
 export async function chatOrchestrate(
   input: ChatOrchestrateInput,
 ): Promise<ChatDecision> {
@@ -662,8 +684,9 @@ export async function chatOrchestrate(
 
   try {
     if (!json) {
-      return requireBaseImage(
+      return gateDecision(
         fallbackChatDecision(input),
+        input.hasTile,
         input.hasBaseImage,
       );
     }
@@ -673,8 +696,9 @@ export async function chatOrchestrate(
       imagePrompt?: unknown;
     };
     if (parsed.action !== 'reply' && parsed.action !== 'generate') {
-      return requireBaseImage(
+      return gateDecision(
         fallbackChatDecision(input),
+        input.hasTile,
         input.hasBaseImage,
       );
     }
@@ -682,7 +706,7 @@ export async function chatOrchestrate(
     if (parsed.action === 'reply') {
       return { action: 'reply', reply };
     }
-    return requireBaseImage(
+    return gateDecision(
       {
         action: 'generate',
         reply,
@@ -691,11 +715,13 @@ export async function chatOrchestrate(
             ? parsed.imagePrompt.trim()
             : input.userMessage,
       },
+      input.hasTile,
       input.hasBaseImage,
     );
   } catch {
-    return requireBaseImage(
+    return gateDecision(
       fallbackChatDecision(input),
+      input.hasTile,
       input.hasBaseImage,
     );
   }
