@@ -1308,7 +1308,7 @@ function VisualizeChat() {
               type="file"
               accept="image/*"
               multiple
-              className="hidden"
+              className="sr-only"
               onChange={handleSceneAttachments}
             />
             <button
@@ -1337,7 +1337,7 @@ function VisualizeChat() {
               ref={referenceInputRef}
               type="file"
               accept="image/*"
-              className="hidden"
+              className="sr-only"
               onChange={handleReferenceAttachment}
             />
             <button
@@ -1535,7 +1535,7 @@ function CustomTilePicker({
           type="file"
           accept="image/*"
           multiple
-          className="hidden"
+          className="sr-only"
           onChange={onFiles}
         />
         <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
